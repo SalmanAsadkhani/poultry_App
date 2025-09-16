@@ -1,15 +1,17 @@
 // lib/screens/tabs/summary_tab.dart
 
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../models/breeding_cycle.dart';
 
-class SummaryTab extends StatelessWidget {
+class SummaryTab extends StatefulWidget {
   final bool isLoading;
   final int chickAge;
   final int remainingChicks;
   final int totalMortality;
-  final int totalChickensSold; // ✅ پارامتر جدید
+  final int totalChickensSold;
+  final double totalWeightSold; // اضافه شد
   final double totalFeedWeight;
   final Map<String, int> feedBagCountSummary;
   final Map<String, double> feedWeightSummary;
@@ -17,6 +19,8 @@ class SummaryTab extends StatelessWidget {
   final double totalExpense;
   final BreedingCycle cycle;
   final VoidCallback onRefresh;
+  final double? fcr;
+  final double? productionIndex;
 
   const SummaryTab({
     super.key,
@@ -24,7 +28,8 @@ class SummaryTab extends StatelessWidget {
     required this.chickAge,
     required this.remainingChicks,
     required this.totalMortality,
-    required this.totalChickensSold, // ✅ اضافه شده به سازنده
+    required this.totalChickensSold,
+    required this.totalWeightSold, // اضافه شد
     required this.totalFeedWeight,
     required this.feedBagCountSummary,
     required this.feedWeightSummary,
@@ -32,204 +37,494 @@ class SummaryTab extends StatelessWidget {
     required this.totalExpense,
     required this.cycle,
     required this.onRefresh,
+    this.fcr,
+    this.productionIndex,
   });
 
   @override
-  Widget build(BuildContext context) {
-    final primaryColor = Color.fromARGB(255, 5, 141, 96);
-    final formatter = NumberFormat.decimalPattern('en_us');
-    final profitOrLoss = totalIncome - totalExpense;
+  State<SummaryTab> createState() => _SummaryTabState();
+}
 
-    if (isLoading) {
-      return Center(
-        child: FadeTransition(
-          opacity: const AlwaysStoppedAnimation(1.0), // انیمیشن fade برای لودینگ
-          child: CircularProgressIndicator(color: primaryColor),
-        ),
+class _SummaryTabState extends State<SummaryTab>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _animationController;
+  late Animation<double> _fadeAnimation;
+  late Animation<Offset> _slideAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    );
+
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.easeIn),
+    );
+    _slideAnimation = Tween<Offset>(
+      begin: const Offset(0, 0.2),
+      end: Offset.zero,
+    ).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.easeOut),
+    );
+
+    if (!widget.isLoading) {
+      _animationController.forward();
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant SummaryTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.isLoading && !widget.isLoading) {
+      _animationController.forward(from: 0.0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.isLoading) {
+      return const Center(
+        child: CircularProgressIndicator(color: Color(0xFF00796B)),
       );
     }
 
+    final List<Widget> summaryWidgets = [
+      _buildFinancialCard(),
+      _buildFlockStatsCard(),
+      _buildFeedSummaryCard(),
+      _buildPerformanceCard(context),
+    ];
+
     return RefreshIndicator(
-      onRefresh: () async => onRefresh(),
-      color: primaryColor,
-      backgroundColor: Colors.white,
-      child: ListView(
+      onRefresh: () async => widget.onRefresh(),
+      color: const Color(0xFF00796B),
+      child: ListView.builder(
+        itemCount: summaryWidgets.length,
         padding: const EdgeInsets.all(16.0),
-        children: [
-          // Card خلاصه مالی با گرادیان header
-          _buildGradientCard(
-            context,
-            gradient: LinearGradient(
-              colors: [primaryColor, const Color.fromARGB(255, 6, 109, 99)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            icon: Icons.account_balance_wallet_outlined,
-            title: 'خلاصه مالی',
-            children: [
-              _buildInfoRow('کل درآمد:', '${formatter.format(totalIncome)} تومان', color: Colors.green.shade600),
-              _buildInfoRow('کل هزینه:', '${formatter.format(totalExpense)} تومان', color: Colors.red.shade600),
-              const Divider(thickness: 1, height: 20, color: Colors.grey),
-              AnimatedScale(
-                scale: profitOrLoss.abs() > 0 ? 1.05 : 1.0, // انیمیشن scale برای highlight
-                duration: const Duration(milliseconds: 500),
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: profitOrLoss >= 0 ? Colors.green.shade100 : Colors.red.shade100,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: profitOrLoss >= 0 ? Colors.green.shade300 : Colors.red.shade300),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        profitOrLoss >= 0 ? 'سود خالص:' : 'زیان خالص:',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: profitOrLoss >= 0 ? Colors.green.shade800 : Colors.red.shade800,
-                        ),
-                      ),
-                      Text(
-                        '${formatter.format(profitOrLoss.abs())} تومان',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: profitOrLoss >= 0 ? Colors.green.shade700 : Colors.red.shade700,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+        itemBuilder: (context, index) {
+          return FadeTransition(
+            opacity: _fadeAnimation,
+            child: SlideTransition(
+              position: _slideAnimation,
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 16.0),
+                child: summaryWidgets[index],
               ),
-            ],
-          ),
-          const SizedBox(height: 16),
-         
-          _buildGradientCard(
-            context,
-            gradient: LinearGradient(
-              colors: [const Color.fromARGB(255, 10, 101, 180), const Color.fromARGB(255, 6, 73, 128)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
             ),
-            icon: Icons.info_outline,
-            title: 'آمار گله',
-            children: [
-              _buildInfoRow('سن گله:', '$chickAge روز', color: Colors.blue.shade600),
-              _buildInfoRow('تعداد اولیه:', formatter.format(cycle.chickCount), color: Colors.blue.shade600),
-              _buildInfoRow('تعداد تلفات:', formatter.format(totalMortality), color: Colors.red.shade600),
-              _buildInfoRow('تعداد فروش رفته:', formatter.format(totalChickensSold), color: Colors.orange.shade600),
-              const Divider(thickness: 1, height: 20, color: Colors.grey),
-              _buildInfoRow('تعداد باقی‌مانده:', formatter.format(remainingChicks), isBold: true, color: primaryColor),
-            ],
+          );
+        },
+      ),
+    );
+  }
+
+  // --- کارت مالی ---
+  Widget _buildFinancialCard() {
+    final formatter = NumberFormat.decimalPattern('en_us');
+    final profitOrLoss = widget.totalIncome - widget.totalExpense;
+
+    return _SummaryCard(
+      title: 'خلاصه مالی',
+      icon: Icons.account_balance_wallet,
+      gradientColors: const [Color(0xFF00796B), Color(0xFF004D40)],
+      child: Column(
+        children: [
+          _buildInfoRow(
+            icon: Icons.arrow_upward,
+            label: 'کل درآمد',
+            value: '${formatter.format(widget.totalIncome)} تومان',
+            color: Colors.green.shade700,
           ),
-          const SizedBox(height: 16),
-          // Card خلاصه مصرف دان با رنگ سبز متنوع
-          _buildGradientCard(
-            context,
-            gradient: LinearGradient(
-              colors: [Colors.green.shade600, const Color.fromARGB(255, 5, 75, 9)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            icon: Icons.restaurant_menu,
-            title: 'خلاصه مصرف دان',
-            children: [
-              _buildInfoRow('جمع کل:', '${totalFeedWeight.toStringAsFixed(1)} کیلوگرم', color: const Color.fromARGB(255, 71, 64, 26)),
-              if (feedWeightSummary.isNotEmpty) ...[
-                const Divider(thickness: 0.5, height: 24, color: Colors.grey),
-                ...feedWeightSummary.entries.map((e) {
-                  final feedType = e.key;
-                  final totalWeight = e.value;
-                  final totalBags = feedBagCountSummary[feedType] ?? 0;
-                  return _buildInfoRow(
-                    '$feedType:',
-                    '${totalWeight.toStringAsFixed(1)} کیلوگرم (از $totalBags کیسه)',
-                    color: const Color.fromARGB(255, 26, 71, 27),
-                  );
-                }),
-              ],
-            ],
+          _buildInfoRow(
+            icon: Icons.arrow_downward,
+            label: 'کل هزینه',
+            value: '${formatter.format(widget.totalExpense)} تومان',
+            color: Colors.red.shade700,
+          ),
+          const Divider(height: 24, thickness: 0.5),
+          _buildInfoRow(
+            icon: profitOrLoss >= 0 ? Icons.trending_up : Icons.trending_down,
+            label: profitOrLoss >= 0 ? 'سود خالص' : 'زیان خالص',
+            value: '${formatter.format(profitOrLoss.abs())} تومان',
+            color: profitOrLoss >= 0
+                ? const Color(0xFF004D40)
+                : Colors.red.shade800,
+            isBold: true,
+            valueSize: 18,
           ),
         ],
       ),
     );
   }
 
-  // Widget جدید برای Card با گرادیان header (جذاب‌تر از Card معمولی)
-  Widget _buildGradientCard(
-    BuildContext context, {
-    required Gradient gradient,
-    required IconData icon,
-    required String title,
-    required List<Widget> children,
-  }) {
-    return Card(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      elevation: 4,
+  // --- کارت گله ---
+  Widget _buildFlockStatsCard() {
+    final formatter = NumberFormat.decimalPattern('en_us');
+    return _SummaryCard(
+      title: 'آمار گله',
+      icon: Icons.info,
+      gradientColors: const [Color(0xFF1976D2), Color(0xFF0D47A1)],
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header با گرادیان
+          _buildInfoRow(
+              icon: Icons.cake,
+              label: 'سن گله',
+              value: '${widget.chickAge} روز'),
+          _buildInfoRow(
+              icon: Icons.numbers,
+              label: 'تعداد اولیه',
+              value: formatter.format(widget.cycle.chickCount)),
+          _buildInfoRow(
+              icon: Icons.cancel,
+              label: 'تلفات کل',
+              value: formatter.format(widget.totalMortality),
+              color: Colors.red.shade600),
+          _buildInfoRow(
+              icon: Icons.local_shipping,
+              label: 'تعداد فروش رفته',
+              value: formatter.format(widget.totalChickensSold)),
+          _buildInfoRow(
+              icon: Icons.scale,
+              label: 'وزن کل فروش رفته',
+              value: '${widget.totalWeightSold.toStringAsFixed(1)} کیلوگرم'),
+          const Divider(height: 24, thickness: 0.5),
+          _buildInfoRow(
+            icon: Icons.home,
+            label: 'تعداد باقی‌مانده',
+            value: formatter.format(widget.remainingChicks),
+            color: const Color(0xFF0D47A1),
+            isBold: true,
+            valueSize: 18,
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- کارت دان ---
+  Widget _buildFeedSummaryCard() {
+    return _SummaryCard(
+      title: 'خلاصه مصرف دان',
+      icon: Icons.restaurant,
+      gradientColors: const [Color(0xFFF57C00), Color(0xFFE65100)],
+      child: Column(
+        children: [
+          _buildInfoRow(
+            icon: Icons.scale,
+            label: 'جمع کل وزن مصرفی',
+            value: '${widget.totalFeedWeight.toStringAsFixed(1)} کیلوگرم',
+            color: const Color(0xFFE65100),
+            isBold: true,
+          ),
+          if (widget.feedWeightSummary.isNotEmpty) ...[
+            const Divider(height: 24, thickness: 0.5),
+            ...widget.feedWeightSummary.entries.map((entry) {
+              final bagCount = widget.feedBagCountSummary[entry.key] ?? 0;
+              return _buildInfoRow(
+                icon: Icons.shopping_bag,
+                label: '${entry.key}:',
+                value:
+                    '${entry.value.toStringAsFixed(1)} کیلو ($bagCount کیسه)',
+              );
+            }),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // --- کارت شاخص تولید ---
+  Widget _buildPerformanceCard(BuildContext context) {
+    return ProductionIndexCard(
+      cycle: widget.cycle,
+      fcr: widget.fcr,
+      productionIndex: widget.productionIndex,
+    );
+  }
+}
+
+// --- کارت کلی ---
+class _SummaryCard extends StatelessWidget {
+  final String title;
+  final IconData icon;
+  final List<Color> gradientColors;
+  final Widget child;
+
+  const _SummaryCard({
+    required this.title,
+    required this.icon,
+    required this.gradientColors,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      elevation: 6,
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Column(
+        children: [
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
-              gradient: gradient,
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(16),
-                topRight: Radius.circular(16),
+              gradient: LinearGradient(
+                colors: gradientColors,
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
               ),
             ),
             child: Row(
               children: [
-                Icon(icon, color: Colors.white, size: 28),
+                Icon(icon, color: Colors.white, size: 24),
                 const SizedBox(width: 12),
                 Text(
                   title,
                   style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 18,
                     fontWeight: FontWeight.bold,
+                    fontSize: 18,
                   ),
                 ),
               ],
             ),
           ),
-          // Body
           Padding(
             padding: const EdgeInsets.all(16.0),
-            child: Column(children: children),
+            child: child,
           ),
         ],
       ),
     );
   }
+}
 
-  // InfoRow بهبودیافته با رنگ متغیر
-  Widget _buildInfoRow(String label, String value, {bool isBold = false, Color? color}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6.0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(
+// --- ردیف اطلاعات ---
+Widget _buildInfoRow({
+  IconData? icon,
+  required String label,
+  required String value,
+  Color? color,
+  bool isBold = false,
+  double valueSize = 16,
+}) {
+  return Padding(
+    padding: const EdgeInsets.symmetric(vertical: 8.0),
+    child: Row(
+      children: [
+        if (icon != null) ...[
+          Icon(icon, size: 20, color: color ?? Colors.grey.shade600),
+          const SizedBox(width: 12),
+        ],
+        Expanded(
+          child: Text(
             label,
             style: TextStyle(
-              color: color ?? Colors.grey[700],
               fontSize: 15,
+              color: Colors.grey.shade700,
+              fontWeight: isBold ? FontWeight.w600 : FontWeight.normal,
             ),
           ),
-          Text(
-            value,
-            style: TextStyle(
-              fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
-              fontSize: 16,
-              color: color ?? Colors.black87,
+        ),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: valueSize,
+            color: color ?? Colors.black87,
+            fontWeight: isBold ? FontWeight.bold : FontWeight.w600,
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+// --- کارت شاخص تولید ---
+class ProductionIndexCard extends StatelessWidget {
+  final BreedingCycle cycle;
+  final double? fcr;
+  final double? productionIndex;
+
+  const ProductionIndexCard({
+    super.key,
+    required this.cycle,
+    this.fcr,
+    this.productionIndex,
+  });
+
+  static const Color _primaryColor = Color(0xFF673AB7);
+  static const Color _accentColor = Color(0xFFFFC107);
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      elevation: 6,
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Column(
+        children: [
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [_primaryColor, Colors.deepPurple.shade800],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
             ),
+            child: Row(
+              children: const [
+                Icon(Icons.bar_chart, color: Colors.white, size: 24),
+                SizedBox(width: 12),
+                Text(
+                  'شاخص‌های عملکرد',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 18,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            color: Colors.white,
+            child: Stack(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    children: [
+                      _buildMetricRow(
+                        context: context,
+                        icon: Icons.sync_alt,
+                        title: 'ضریب تبدیل (FCR)',
+                        value: fcr != null ? fcr!.toStringAsFixed(2) : " - ",
+                        infoText:
+                            'FCR = (وزن کل دان مصرفی) ÷ (وزن کل مرغ فروخته شده)\nهرچه کمتر، بهتر.',
+                      ),
+                      const Divider(
+                          height: 24, thickness: 0.5, indent: 16, endIndent: 16),
+                      _buildMetricRow(
+                        context: context,
+                        icon: Icons.trending_up,
+                        title: 'شاخص تولید',
+                        value: productionIndex != null
+                            ? productionIndex!.toStringAsFixed(2)
+                            : " - ",
+                        infoText:
+                            'شاخص تولید = (درصد زنده‌مانی × میانگین وزن) ÷ (FCR × سن گله) × 10',
+                      ),
+                    ],
+                  ),
+                ),
+                if (cycle.isActive) _buildLockedState(),
+              ],
+            ),
+          )
+        ],
+      ),
+    );
+  }
+
+  static Widget _buildMetricRow({
+    required BuildContext context,
+    required IconData icon,
+    required String title,
+    required String value,
+    required String infoText,
+  }) {
+    return Row(
+      children: [
+        Icon(icon, color: _primaryColor, size: 28),
+        const SizedBox(width: 16),
+        Expanded(
+          child: Text(
+            title,
+            style: const TextStyle(
+                fontSize: 16, fontWeight: FontWeight.w500, color: Colors.black87),
+          ),
+        ),
+        Text(
+          value,
+          style: const TextStyle(
+              fontSize: 20, fontWeight: FontWeight.bold, color: _primaryColor),
+        ),
+        const SizedBox(width: 8),
+        IconButton(
+          icon: const Icon(Icons.info_outline, color: Colors.grey, size: 20),
+          onPressed: () => _showInfoDialog(context, title, infoText),
+        ),
+      ],
+    );
+  }
+
+  static Widget _buildLockedState() {
+    return Positioned.fill(
+      child: ClipRRect(
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 4, sigmaY: 4),
+          child: Container(
+            color: Colors.white.withOpacity(0.6),
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: const [
+                    Icon(Icons.lock, color: _primaryColor, size: 32),
+                    SizedBox(height: 12),
+                    Text(
+                      'این آمار پس از پایان دوره محاسبه خواهد شد.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 15,
+                        color: _primaryColor,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  static void _showInfoDialog(
+      BuildContext context, String title, String content) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Icon(Icons.info, color: _accentColor),
+            const SizedBox(width: 8),
+            Text(title,
+                style: const TextStyle(fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: Text(content,
+            style: const TextStyle(fontSize: 15, height: 1.5)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('متوجه شدم',
+                style: TextStyle(
+                    color: _primaryColor, fontWeight: FontWeight.bold)),
           ),
         ],
       ),

@@ -20,6 +20,8 @@ class _ExpenseListScreenState extends State<ExpenseListScreen> {
   bool _isLoading = true;
   List<Expense> _expenses = [];
   double _categoryTotal = 0.0;
+  double _totalFeedWeight = 0;
+
   final formatter = NumberFormat.decimalPattern('en_us');
 
   @override
@@ -27,19 +29,26 @@ class _ExpenseListScreenState extends State<ExpenseListScreen> {
     super.initState();
     _loadExpenses();
   }
-
-  Future<void> _loadExpenses() async {
-    setState(() => _isLoading = true);
-    final expenses = await DatabaseHelper.instance.getExpensesForCycle(widget.cycleId, category: widget.category);
-    _categoryTotal = expenses.fold(0.0, (sum, expense) => sum + expense.totalPrice);
-    if (mounted) {
-      setState(() {
-        _expenses = expenses;
-        _isLoading = false;
-      });
-    }
-  }
+Future<void> _loadExpenses() async {
+  setState(() => _isLoading = true);
+  final expenses = await DatabaseHelper.instance.getExpensesForCycle(widget.cycleId, category: widget.category);
+  _categoryTotal = expenses.fold(0.0, (sum, expense) => sum + expense.totalPrice);
   
+  // محاسبه جمع کل وزن برای دان
+  if (widget.category == 'دان') {
+    _totalFeedWeight = expenses.fold(0.0, (sum, expense) => sum + (expense.weight ?? 0));
+  } else {
+    _totalFeedWeight = 0.0;
+  }
+
+  if (mounted) {
+    setState(() {
+      _expenses = expenses;
+      _isLoading = false;
+    });
+  }
+}
+
   void _navigateAndAddExpense() async {
     final result = await Navigator.push(
       context,
@@ -196,26 +205,44 @@ class _ExpenseListScreenState extends State<ExpenseListScreen> {
           : Column(
               children: [
                 Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(16),
-                  margin: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Color.fromARGB(255, 240, 248, 245),
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(color: Colors.grey.withOpacity(0.2), spreadRadius: 2, blurRadius: 5),
-                    ],
-                  ),
-                  child: Text(
-                    'جمع کل: ${formatter.format(_categoryTotal)} تومان',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: primaryColor,
-                    ),
-                  ),
-                ),
+  width: double.infinity,
+  padding: const EdgeInsets.all(16),
+  margin: const EdgeInsets.all(16),
+  decoration: BoxDecoration(
+    color: Color.fromARGB(255, 240, 248, 245),
+    borderRadius: BorderRadius.circular(16),
+    boxShadow: [
+      BoxShadow(color: Colors.grey.withOpacity(0.2), spreadRadius: 2, blurRadius: 5),
+    ],
+  ),
+  child: Column(
+    children: [
+      Text(
+        'جمع کل هزینه: ${formatter.format(_categoryTotal)} تومان',
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          fontSize: 18,
+          fontWeight: FontWeight.bold,
+          color: primaryColor,
+        ),
+      ),
+      if (widget.category == 'دان') ...[
+        const SizedBox(height: 8),
+        Text(
+          'مجموع دان مصرفی  : ${_totalFeedWeight.toStringAsFixed(1)} کیلوگرم',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: const Color.fromARGB(255, 206, 36, 6),
+          ),
+        ),
+      ]
+    ],
+  ),
+),
+
+
                 Expanded(
                   child: _expenses.isEmpty
                       ? const Center(child: Text('هیچ هزینه‌ای ثبت نشده است.'))

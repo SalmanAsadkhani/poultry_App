@@ -1,4 +1,3 @@
-
 // lib/screens/add_edit_cycle_screen.dart
 
 import 'package:flutter/material.dart';
@@ -55,7 +54,10 @@ class _AddEditCycleScreenState extends State<AddEditCycleScreen> {
         id: widget.cycle?.id,
         name: _nameController.text,
         chickCount: int.parse(_chickCountController.text.replaceAll(',', '')),
-        startDate: _dateController.text.replaceAll('/', '-'), // ذخیره با فرمت YYYY-MM-DD
+        startDate: _dateController.text.replaceAll(
+          '/',
+          '-',
+        ), // ذخیره با فرمت YYYY-MM-DD
         endDate: '',
         isActive: widget.cycle?.isActive ?? true,
       );
@@ -64,12 +66,15 @@ class _AddEditCycleScreenState extends State<AddEditCycleScreen> {
       } else {
         await DatabaseHelper.instance.insertCycle(newCycle);
       }
-     
+
       if (mounted) Navigator.of(context).pop(true);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('خطا در ذخیره‌سازی: $e'), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text('خطا در ذخیره‌سازی: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     } finally {
@@ -79,8 +84,9 @@ class _AddEditCycleScreenState extends State<AddEditCycleScreen> {
 
   String? _validateShamsiDate(String? value) {
     if (value == null || value.isEmpty) return 'لطفاً تاریخ را وارد کنید.';
-    if (!RegExp(r'^\d{4}/\d{2}/\d{2}$').hasMatch(value)) return 'فرمت تاریخ صحیح نیست.';
-   
+    if (!RegExp(r'^\d{4}/\d{2}/\d{2}$').hasMatch(value))
+      return 'فرمت تاریخ صحیح نیست.';
+
     try {
       final parts = value.split('/');
       Jalali(int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
@@ -93,6 +99,7 @@ class _AddEditCycleScreenState extends State<AddEditCycleScreen> {
   @override
   Widget build(BuildContext context) {
     final primaryColor = Color.fromARGB(255, 17, 92, 67);
+  
     return Scaffold(
       appBar: AppBar(
         title: Text(_isEditing ? 'ویرایش دوره' : 'افزودن دوره جدید'),
@@ -116,7 +123,9 @@ class _AddEditCycleScreenState extends State<AddEditCycleScreen> {
             children: [
               Card(
                 elevation: 4,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
                 color: Color.fromARGB(255, 240, 248, 245),
                 child: Padding(
                   padding: const EdgeInsets.all(16),
@@ -129,11 +138,22 @@ class _AddEditCycleScreenState extends State<AddEditCycleScreen> {
                         decoration: InputDecoration(
                           labelText: 'نام دوره',
                           hintText: 'مثال: مرداد ماه ۱۴۰۴', // ✅ اضافه شده
-                          hintStyle: TextStyle(color: const Color.fromARGB(106, 53, 71, 104)),
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                          enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: primaryColor.withOpacity(0.3))),
+                          hintStyle: TextStyle(
+                            color: const Color.fromARGB(106, 53, 71, 104),
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderSide: BorderSide(
+                              color: primaryColor.withOpacity(0.3),
+                            ),
+                          ),
                         ),
-                        validator: (value) => (value == null || value.trim().isEmpty) ? 'لطفاً نام دوره را وارد کنید.' : null,
+                        validator: (value) =>
+                            (value == null || value.trim().isEmpty)
+                            ? 'لطفاً نام دوره را وارد کنید.'
+                            : null,
                       ),
                     ],
                   ),
@@ -142,7 +162,9 @@ class _AddEditCycleScreenState extends State<AddEditCycleScreen> {
               const SizedBox(height: 16),
               Card(
                 elevation: 4,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
                 color: Color.fromARGB(255, 240, 248, 245),
                 child: Padding(
                   padding: const EdgeInsets.all(16),
@@ -155,13 +177,24 @@ class _AddEditCycleScreenState extends State<AddEditCycleScreen> {
                         decoration: InputDecoration(
                           labelText: 'تعداد جوجه',
                           hintText: 'مثال: 15,000', // ✅ اضافه شده
-                          hintStyle: TextStyle(color: const Color.fromARGB(106, 53, 71, 104)),
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                          enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: primaryColor.withOpacity(0.3))),
+                          hintStyle: TextStyle(
+                            color: const Color.fromARGB(106, 53, 71, 104),
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderSide: BorderSide(
+                              color: primaryColor.withOpacity(0.3),
+                            ),
+                          ),
                         ),
                         validator: (value) {
-                          if (value == null || value.isEmpty) return 'لطفاً تعداد را وارد کنید.';
-                          final number = int.tryParse(value.replaceAll(',', ''));
+                          if (value == null || value.isEmpty)
+                            return 'لطفاً تعداد را وارد کنید.';
+                          final number = int.tryParse(
+                            value.replaceAll(',', ''),
+                          );
                           if (number == null || number <= 0) {
                             return 'لطفاً یک عدد معتبر و بزرگتر از صفر وارد کنید.';
                           }
@@ -175,7 +208,9 @@ class _AddEditCycleScreenState extends State<AddEditCycleScreen> {
               const SizedBox(height: 16),
               Card(
                 elevation: 4,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
                 color: Color.fromARGB(255, 240, 248, 245),
                 child: Padding(
                   padding: const EdgeInsets.all(16),
@@ -188,9 +223,17 @@ class _AddEditCycleScreenState extends State<AddEditCycleScreen> {
                         decoration: InputDecoration(
                           labelText: 'تاریخ شروع',
                           hintText: 'مثال: 1404/06/01',
-                          hintStyle: TextStyle(color: const Color.fromARGB(106, 53, 71, 104)), // ✅ اضافه شده
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                          enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: primaryColor.withOpacity(0.3))),
+                          hintStyle: TextStyle(
+                            color: const Color.fromARGB(106, 53, 71, 104),
+                          ), // ✅ اضافه شده
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderSide: BorderSide(
+                              color: primaryColor.withOpacity(0.3),
+                            ),
+                          ),
                         ),
                         keyboardType: TextInputType.number,
                         validator: _validateShamsiDate,
@@ -204,12 +247,27 @@ class _AddEditCycleScreenState extends State<AddEditCycleScreen> {
               ElevatedButton(
                 onPressed: _isSaving ? null : _saveForm,
                 child: _isSaving
-                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                    : Text(_isEditing ? 'ذخیره تغییرات' : 'ذخیره دوره', style: const TextStyle(fontSize: 16)),
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 2,
+                        ),
+                      )
+                    : Text(
+                        _isEditing ? 'ذخیره تغییرات' : 'ذخیره دوره',
+                        style: const TextStyle(fontSize: 16),
+                      ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: primaryColor,
-                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 24),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 12,
+                    horizontal: 24,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
               ),
             ],

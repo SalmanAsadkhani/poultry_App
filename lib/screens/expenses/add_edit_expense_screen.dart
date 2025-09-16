@@ -5,7 +5,6 @@ import 'package:intl/intl.dart';
 import 'package:shamsi_date/shamsi_date.dart';
 import '../../helpers/database_helper.dart';
 import '../../models/expense.dart';
-import '../../helpers/app_config.dart';
 import '../../widgets/numeric_text_form_field.dart';
 
 class AddEditExpenseScreen extends StatefulWidget {
@@ -45,12 +44,13 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
   void initState() {
     super.initState();
     final expense = widget.expense;
+
     _titleController = TextEditingController(text: expense?.title ?? '');
     _quantityController = TextEditingController(text: expense?.quantity.toString() ?? '1');
     _unitPriceController = TextEditingController(text: expense?.unitPrice?.toString() ?? '');
     _bagCountController = TextEditingController(text: expense?.bagCount?.toString() ?? '');
     _weightController = TextEditingController(text: expense?.weight?.toString() ?? '');
-    _descriptionController = TextEditingController(text: expense?.description ?? ''); // ✅ مطمئن شو مقدار اولیه لود می‌شه
+    _descriptionController = TextEditingController(text: expense?.description ?? '');
     _selectedDate = expense?.date ?? Jalali.now().toDateTime().toIso8601String().substring(0, 10);
 
     _quantityController.addListener(_calculateTotalPrice);
@@ -103,7 +103,7 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
       date: _selectedDate,
       quantity: int.tryParse(_quantityController.text.replaceAll(',', '')) ?? 1,
       unitPrice: unitPrice,
-      description: _descriptionController.text.trim().isNotEmpty ? _descriptionController.text.trim() : null, // ✅ trim و چک برای description
+      description: _descriptionController.text.trim().isNotEmpty ? _descriptionController.text.trim() : null,
       bagCount: int.tryParse(_bagCountController.text.replaceAll(',', '')),
       weight: double.tryParse(_weightController.text.replaceAll(',', '')),
     );
@@ -116,13 +116,16 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
       }
       if (mounted) Navigator.of(context).pop(true);
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('خطا در ذخیره‌سازی: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('خطا در ذخیره‌سازی: $e')),
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final primaryColor = Color.fromARGB(255, 5, 141, 96);
+
     return Scaffold(
       appBar: AppBar(
         title: Text(_isEditing ? 'ویرایش هزینه' : 'افزودن هزینه'),
@@ -151,34 +154,45 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
                 padding: const EdgeInsets.all(16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('عنوان', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: primaryColor)),
-                    const SizedBox(height: 12),
-                    if (_isFeed)
-                      DropdownButtonFormField<String>(
-                        value: feedTypeWeights.keys.contains(_titleController.text) ? _titleController.text : null,
-                        hint: const Text('نوع دان را انتخاب کنید'),
-                        items: feedTypeWeights.keys
-                            .map((String value) => DropdownMenuItem<String>(value: value, child: Text(value)))
-                            .toList(),
-                        onChanged: (newValue) => setState(() => _titleController.text = newValue!),
-                        validator: (v) => v == null || v.isEmpty ? 'نوع دان الزامی است' : null,
-                        decoration: InputDecoration(
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                          enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: primaryColor.withOpacity(0.3))),
-                        ),
-                      )
-                    else
-                      TextFormField(
-                        controller: _titleController,
-                        decoration: InputDecoration(
-                          labelText: 'عنوان / نام',
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                          enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: primaryColor.withOpacity(0.3))),
-                        ),
-                        validator: (v) => v!.isEmpty ? 'این فیلد الزامی است' : null,
-                      ),
-                  ],
+               children: [
+  Text(
+    'عنوان',
+    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: primaryColor),
+  ),
+  const SizedBox(height: 12),
+  _isFeed
+      ? DropdownButtonFormField<String>(
+          value: ['استارتر', 'پیش دان', 'میان دان', 'میان دان دو', 'پس دان' , 'پس دان دو']
+                  .contains(_titleController.text)
+              ? _titleController.text
+              : null,
+          hint: const Text('نوع دان را انتخاب کنید'),
+          items: ['استارتر', 'پیش دان', 'میان دان', 'میان دان دو', 'پس دان' , 'پس دان دو']
+              .map((type) => DropdownMenuItem(value: type, child: Text(type)))
+              .toList(),
+          onChanged: (newValue) => setState(() => _titleController.text = newValue!),
+          validator: (v) => v == null || v.isEmpty ? 'نوع دان الزامی است' : null,
+          decoration: InputDecoration(
+            labelText: 'نوع دان',
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+            enabledBorder: OutlineInputBorder(
+              borderSide: BorderSide(color: primaryColor.withOpacity(0.3)),
+            ),
+          ),
+        )
+      : TextFormField(
+          controller: _titleController,
+          decoration: InputDecoration(
+            labelText: 'عنوان / نام',
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+            enabledBorder: OutlineInputBorder(
+              borderSide: BorderSide(color: primaryColor.withOpacity(0.3)),
+            ),
+          ),
+          validator: (v) => v!.isEmpty ? 'این فیلد الزامی است' : null,
+        ),
+],
+
                 ),
               ),
             ),
@@ -317,10 +331,6 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
                         enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: primaryColor.withOpacity(0.3))),
                       ),
                       maxLines: 3,
-                      validator: (value) {  // ✅ validator برای optional field
-                        if (value != null && value.trim().isEmpty) return null;  // optional، پس ok
-                        return null;
-                      },
                     ),
                   ],
                 ),

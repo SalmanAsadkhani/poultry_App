@@ -1,14 +1,18 @@
 import 'package:sqflite/sqflite.dart';
-import 'package:path/path.dart';
 import '../models/breeding_cycle.dart';
 import '../models/daily_report.dart';
 import '../models/feed_consumption.dart';
 import '../models/expense.dart';
 import '../models/income.dart';
+import 'dart:io';
+import 'package:flutter/scheduler.dart';
+import 'package:path/path.dart';
+import 'dart:typed_data';
+import '../models/feed.dart';
 
 class DatabaseHelper {
   static const _databaseName = "PoultryApp.db";
-  static const _databaseVersion = 2; // ✅ افزایش version برای migration
+  static const _databaseVersion = 1;
   static const tableCycles = 'breeding_cycles';
 
   DatabaseHelper._privateConstructor();
@@ -23,109 +27,128 @@ class DatabaseHelper {
 
   _initDatabase() async {
     String path = join(await getDatabasesPath(), _databaseName);
+
+    print("==========================================================");
+    print("Database Path on Device: $path");
+    print("==========================================================");
+
     return await openDatabase(
       path,
       version: _databaseVersion,
       onCreate: _onCreate,
-      onUpgrade: _onUpgrade, // ✅ اضافه شد برای migration
+      onUpgrade: _onUpgrade,
     );
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
     if (oldVersion < 2) {
-      // اگر تغییری در schema داری، اینجا اعمال کن (مثل ALTER TABLE ADD COLUMN)
-      // برای مثال، اگر weight رو به REAL تغییر دادی:
-      // await db.execute('ALTER TABLE expenses ADD COLUMN weight REAL;');
-      // اما چون جدول کامل rebuild می‌شه، معمولاً لازم نیست
+      // تغییرات schema اگر لازم باشه
     }
   }
 
-  // در فایل lib/helpers/database_helper.dart
   Future _onCreate(Database db, int version) async {
-    // ... (جدول breeding_cycles و daily_reports بدون تغییر باقی می‌مانند) ...
     await db.execute('''
-      CREATE TABLE $tableCycles (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL,
-        start_date TEXT NOT NULL,
-        end_date TEXT,
-        chick_count INTEGER NOT NULL,
-        is_active INTEGER NOT NULL
-      )
-    ''');
+        CREATE TABLE $tableCycles (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          start_date TEXT NOT NULL,
+          end_date TEXT,
+          chick_count INTEGER NOT NULL,
+           isActive INTEGER NOT NULL DEFAULT true
+        )
+      ''');
 
     await db.execute('''
-      CREATE TABLE daily_reports (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        cycle_id INTEGER NOT NULL,
-        report_date TEXT NOT NULL,
-        mortality INTEGER NOT NULL DEFAULT 0,
-        medicine TEXT,
-        notes TEXT,
-        FOREIGN KEY (cycle_id) REFERENCES $tableCycles (id) ON DELETE CASCADE
-      )
-    ''');
-
-    // ✅ تغییر در این جدول اعمال شده است
-    await db.execute('''
-      CREATE TABLE feed_consumptions (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        report_id INTEGER NOT NULL,
-        feed_type TEXT NOT NULL,
-        quantity REAL NOT NULL,
-        bag_count INTEGER NOT NULL DEFAULT 0, -- ✅ ستون جدید اضافه شد
-        FOREIGN KEY (report_id) REFERENCES daily_reports (id) ON DELETE CASCADE
-      )
-    ''');
-
-    // در فایل lib/helpers/database_helper.dart داخل متد _onCreate
-    await db.execute('''
-      CREATE TABLE expenses (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        cycle_id INTEGER NOT NULL,
-        category TEXT NOT NULL,
-        title TEXT NOT NULL,
-        date TEXT NOT NULL,
-        quantity INTEGER NOT NULL DEFAULT 1,
-        unit_price REAL,
-        description TEXT,
-        bag_count INTEGER,
-        weight REAL, -- ✅ از INTEGER به REAL تغییر کرد
-        FOREIGN KEY (cycle_id) REFERENCES breeding_cycles (id) ON DELETE CASCADE
-      )
-    ''');
+        CREATE TABLE daily_reports (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          cycle_id INTEGER NOT NULL,
+          report_date TEXT NOT NULL,
+          mortality INTEGER NOT NULL DEFAULT 0,
+          medicine TEXT,
+          notes TEXT,
+          FOREIGN KEY (cycle_id) REFERENCES $tableCycles (id) ON DELETE CASCADE
+        )
+      ''');
 
     await db.execute('''
-      CREATE TABLE incomes (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        cycle_id INTEGER NOT NULL,
-        category TEXT NOT NULL,
-        title TEXT NOT NULL,
-        date TEXT NOT NULL,
-        quantity INTEGER,
-        weight REAL, -- ✅ از INTEGER به REAL تغییر کرد
-        unit_price REAL,
-        description TEXT,
-        FOREIGN KEY (cycle_id) REFERENCES breeding_cycles (id) ON DELETE CASCADE
-      )
-    ''');
+        CREATE TABLE feed_consumptions (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          report_id INTEGER NOT NULL,
+          feed_type TEXT NOT NULL,
+          quantity REAL NOT NULL,
+          bag_count INTEGER NOT NULL DEFAULT 0,
+          FOREIGN KEY (report_id) REFERENCES daily_reports (id) ON DELETE CASCADE
+        )
+      ''');
+
+    await db.execute('''
+        CREATE TABLE expenses (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          cycle_id INTEGER NOT NULL,
+          category TEXT NOT NULL,
+          title TEXT NOT NULL,
+          date TEXT NOT NULL,
+          quantity INTEGER NOT NULL DEFAULT 1,
+          unit_price REAL,
+          description TEXT,
+          bag_count INTEGER,
+          weight REAL,
+          FOREIGN KEY (cycle_id) REFERENCES breeding_cycles (id) ON DELETE CASCADE
+        )
+      ''');
+
+    await db.execute('''
+        CREATE TABLE incomes (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          cycle_id INTEGER NOT NULL,
+          category TEXT NOT NULL,
+          title TEXT NOT NULL,
+          date TEXT NOT NULL,
+          quantity INTEGER,
+          weight REAL,
+          unit_price REAL,
+          description TEXT,
+          FOREIGN KEY (cycle_id) REFERENCES breeding_cycles (id) ON DELETE CASCADE
+        )
+      ''');
+
+    await db.execute('''
+        CREATE TABLE feeds (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          expense_id INTEGER,
+          name TEXT NOT NULL,
+          quantity REAL NOT NULL,
+          bag_count INTEGER NOT NULL,
+          remaining_bags INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL,
+          FOREIGN KEY (expense_id) REFERENCES expenses (id) ON DELETE SET NULL
+        )
+      ''');
   }
 
-  // ─────────────── CRUD ───────────────
-  // ۱. Insert
+  // ================== CRUD برای cycles ==================
+
   Future<int> insertCycle(BreedingCycle cycle) async {
-    final db = await instance.database;
-    return await db.insert(tableCycles, cycle.toMap());
+    final db = await database;
+    print('========================================================');
+      print('دوره ذخیره شد: ${cycle.toMap()}');
+    print('========================================================');
+
+    return await db.insert(tableCycles, {
+      'name': cycle.name,
+      'start_date': cycle.startDate,
+      'end_date': cycle.endDate,
+      'chick_count': cycle.chickCount,
+      'isActive': cycle.isActive, // اطمینان از استفاده از نام صحیح
+    });
   }
 
-  // ۲. Select all
   Future<List<BreedingCycle>> getAllCycles() async {
     final db = await instance.database;
-    final maps = await db.query(tableCycles, orderBy: "id DESC");
+    final maps = await db.query(tableCycles, orderBy: "id ASC");
     return List.generate(maps.length, (i) => BreedingCycle.fromMap(maps[i]));
   }
 
-  // ۳. Update
   Future<int> updateCycle(BreedingCycle cycle) async {
     final db = await instance.database;
     return await db.update(
@@ -136,83 +159,116 @@ class DatabaseHelper {
     );
   }
 
-  // ۴. Delete
   Future<int> deleteCycle(int id) async {
     final db = await instance.database;
-    return await db.delete(
-      tableCycles,
-      where: "id = ?",
-      whereArgs: [id],
-    );
+    return await db.delete(tableCycles, where: "id = ?", whereArgs: [id]);
   }
 
-  // ─────────────── Helpers ───────────────
-  // بررسی اینکه آیا یک دوره، داده وابسته (گزارش روزانه یا هزینه) دارد یا نه
   Future<bool> hasRelatedData(int cycleId) async {
     final db = await instance.database;
-    // ۱. ابتدا جدول گزارشات روزانه را بررسی کن
     final reportsResult = await db.query(
-      'daily_reports', // ✅ نام جدول صحیح
+      'daily_reports',
       where: "cycle_id = ?",
       whereArgs: [cycleId],
-      limit: 1, // فقط به یک نتیجه نیاز داریم تا بفهمیم داده وجود دارد یا نه
+      limit: 1,
     );
-    // اگر حتی یک گزارش پیدا شد، یعنی داده وابسته وجود دارد و ادامه نده
-    if (reportsResult.isNotEmpty) {
-      return true;
-    }
-    // ۲. اگر گزارشی نبود، حالا جدول هزینه‌ها را بررسی کن
+    if (reportsResult.isNotEmpty) return true;
     final expensesResult = await db.query(
-      'expenses', // ✅ نام جدول صحیح
+      'expenses',
       where: "cycle_id = ?",
       whereArgs: [cycleId],
-      limit: 1, // اینجا هم یک نتیجه کافیست
+      limit: 1,
     );
-    // اگر هزینه‌ای پیدا شد، باز هم یعنی داده وابسته وجود دارد
-    if (expensesResult.isNotEmpty) {
-      return true;
-    }
-    // اگر هیچکدام از موارد بالا داده‌ای برنگرداندند، یعنی دوره خالی است و قابل حذف
+    if (expensesResult.isNotEmpty) return true;
     return false;
   }
 
-  // این کد را به انتهای کلاس DatabaseHelper اضافه کن
-  // درج گزارش روزانه و دان‌های مصرفی آن (با استفاده از Transaction)
-  Future<void> insertDailyReport(DailyReport report, List<FeedConsumption> feeds) async {
+  // ================== گزارش روزانه ==================
+  Future<void> insertDailyReport(
+    DailyReport report,
+    List<FeedConsumption> feeds,
+  ) async {
     final db = await instance.database;
-    // Transaction تضمین می‌کند که یا همه‌ی عملیات با موفقیت انجام می‌شود یا هیچکدام
+
+    // بررسی وضعیت دوره
+    final cycle = await db.query(
+      'breeding_cycles',
+      where: 'id = ?',
+      whereArgs: [report.cycleId],
+    );
+    if (cycle.isEmpty || cycle.first['isActive'] == 0) {
+      throw Exception('نمی‌توانید برای دوره غیرفعال گزارش ثبت کنید.');
+    }
     await db.transaction((txn) async {
-      // 1. گزارش اصلی را درج کن و ID آن را بگیر
       final reportId = await txn.insert('daily_reports', report.toMap());
-      // 2. به ازای هر آیتم در لیست دان، آن را با reportId جدید درج کن
       for (final feed in feeds) {
-        // یک کپی از مپ می‌سازیم تا بتوانیم آن را تغییر دهیم
         final feedMap = Map<String, dynamic>.from(feed.toMap());
-        feedMap['report_id'] = reportId; // اتصال به گزارش اصلی
+        feedMap['report_id'] = reportId;
         await txn.insert('feed_consumptions', feedMap);
       }
     });
+    await _recalculateAndUpdateAllFeeds();
   }
 
-  // واکشی تمام گزارشات یک دوره به همراه دان‌های مصرفی
-  // در فایل lib/helpers/database_helper.dart
-  // واکشی تمام گزارشات یک دوره به همراه دان‌های مصرفی
+  Future<void> updateDailyReport(
+    DailyReport report,
+    List<FeedConsumption> feeds,
+  ) async {
+    final db = await instance.database;
+    await db.transaction((txn) async {
+      await txn.update(
+        'daily_reports',
+        report.toMap(),
+        where: 'id = ?',
+        whereArgs: [report.id],
+      );
+      await txn.delete(
+        'feed_consumptions',
+        where: 'report_id = ?',
+        whereArgs: [report.id],
+      );
+      for (final feed in feeds) {
+        final feedMap = Map<String, dynamic>.from(feed.toMap());
+        feedMap['report_id'] = report.id;
+        await txn.insert('feed_consumptions', feedMap);
+      }
+    });
+    await _recalculateAndUpdateAllFeeds();
+  }
+
+  Future<void> deleteDailyReport(int reportId) async {
+    final db = await instance.database;
+    await db.transaction((txn) async {
+      await txn.delete(
+        'feed_consumptions',
+        where: 'report_id = ?',
+        whereArgs: [reportId],
+      );
+      await txn.delete('daily_reports', where: 'id = ?', whereArgs: [reportId]);
+    });
+    await _recalculateAndUpdateAllFeeds();
+  }
+
   Future<List<DailyReport>> getAllReportsForCycle(int cycleId) async {
     final db = await instance.database;
-
-    // ✅✅✅ تغییر اصلی اینجاست: DESC به ASC تغییر کرد ✅✅✅
     final reportMaps = await db.query(
       'daily_reports',
       where: 'cycle_id = ?',
       whereArgs: [cycleId],
-      orderBy: 'report_date ASC' // مرتب‌سازی صعودی (از قدیمی به جدید)
+      orderBy: 'report_date ASC',
     );
 
     if (reportMaps.isEmpty) return [];
     final List<DailyReport> reports = [];
     for (var reportMap in reportMaps) {
-      final feedMaps = await db.query('feed_consumptions', where: 'report_id = ?', whereArgs: [reportMap['id']]);
-      final feeds = feedMaps.map((feed) => FeedConsumption.fromMap(feed)).toList();
+      final feedMaps = await db.query(
+        'feed_consumptions',
+        where: 'report_id = ?',
+        whereArgs: [reportMap['id']],
+      );
+      final feeds = feedMaps
+          .map((feed) => FeedConsumption.fromMap(feed))
+          .toList();
 
       final report = DailyReport.fromMap(reportMap);
       reports.add(
@@ -230,90 +286,113 @@ class DatabaseHelper {
     return reports;
   }
 
-  // این کد را به انتهای کلاس DatabaseHelper اضافه کنید
-  // --- CRUD برای هزینه‌ها (Expenses) ---
+  // ================== هزینه‌ها و درآمد ==================
   Future<int> insertExpense(Expense expense) async {
     final db = await instance.database;
-    return await db.insert('expenses', expense.toMap(), conflictAlgorithm: ConflictAlgorithm.replace); // ✅ اضافه شد برای safety
+    final expenseId = await db.insert(
+      'expenses',
+      expense.toMap(),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+
+    if (expense.category == 'دان') {
+      final feed = Feed(
+        expenseId: expenseId,
+        name: expense.title,
+        quantity: expense.weight,
+        bagCount: expense.bagCount,
+      );
+      await insertFeed(feed);
+      await _recalculateAndUpdateAllFeeds();
+    }
+    return expenseId;
   }
 
   Future<int> updateExpense(Expense expense) async {
     final db = await instance.database;
-    return await db.update('expenses', expense.toMap(), where: 'id = ?', whereArgs: [expense.id]);
+
+    if (expense.category == 'دان') {
+      await db.update(
+        'feeds',
+        {
+          'name': expense.title,
+          'quantity': expense.weight,
+          'bag_count': expense.bagCount,
+        },
+        where: 'expense_id = ?',
+        whereArgs: [expense.id],
+      );
+      await _recalculateAndUpdateAllFeeds();
+    }
+
+    return await db.update(
+      'expenses',
+      expense.toMap(),
+      where: 'id = ?',
+      whereArgs: [expense.id],
+    );
   }
 
   Future<int> deleteExpense(int id) async {
     final db = await instance.database;
+    final maps = await db.query(
+      'expenses',
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+
+    if (maps.isNotEmpty) {
+      final expense = Expense.fromMap(maps.first);
+      if (expense.category == 'دان') {
+        await db.delete('feeds', where: 'expense_id = ?', whereArgs: [id]);
+        await _recalculateAndUpdateAllFeeds();
+      }
+    }
     return await db.delete('expenses', where: 'id = ?', whereArgs: [id]);
   }
 
-  // گرفتن تمام هزینه‌های یک دوره، با قابلیت فیلتر بر اساس دسته‌بندی
-  Future<List<Expense>> getExpensesForCycle(int cycleId, {String? category}) async {
+  Future<List<Expense>> getExpensesForCycle(
+    int cycleId, {
+    String? category,
+  }) async {
     final db = await instance.database;
     List<Map<String, dynamic>> maps;
     if (category != null) {
       maps = await db.query(
-        'expenses', 
-        where: 'cycle_id = ? AND category = ?', 
-        whereArgs: [cycleId, category], 
-        orderBy: 'id ASC'  // ✅ تغییر به id ASC (۱، ۲، ۳، ...)
+        'expenses',
+        where: 'cycle_id = ? AND category = ?',
+        whereArgs: [cycleId, category],
+        orderBy: 'id ASC',
       );
     } else {
       maps = await db.query(
-        'expenses', 
-        where: 'cycle_id = ?', 
-        whereArgs: [cycleId], 
-        orderBy: 'id ASC'  // ✅ یکسان برای همه
+        'expenses',
+        where: 'cycle_id = ?',
+        whereArgs: [cycleId],
+        orderBy: 'id ASC',
       );
     }
     return List.generate(maps.length, (i) => Expense.fromMap(maps[i]));
   }
 
-  // در انتهای کلاس DatabaseHelper اضافه شود
-  // آپدیت کردن یک گزارش روزانه و دان‌های مصرفی آن
-  Future<void> updateDailyReport(DailyReport report, List<FeedConsumption> feeds) async {
-    final db = await instance.database;
-    await db.transaction((txn) async {
-      // ۱. اطلاعات اصلی گزارش را آپدیت کن
-      await txn.update(
-        'daily_reports',
-        report.toMap(),
-        where: 'id = ?',
-        whereArgs: [report.id],
-      );
-      // ۲. تمام رکوردهای دان مصرفی قبلی مربوط به این گزارش را حذف کن
-      await txn.delete('feed_consumptions', where: 'report_id = ?', whereArgs: [report.id]);
-      // ۳. رکوردهای جدید دان مصرفی را درج کن
-      for (final feed in feeds) {
-        final feedMap = Map<String, dynamic>.from(feed.toMap());
-        feedMap['report_id'] = report.id;
-        await txn.insert('feed_consumptions', feedMap);
-      }
-    });
-  }
-
-  // در انتهای کلاس DatabaseHelper اضافه شود
-  // حذف یک گزارش روزانه و تمام داده‌های وابسته‌ی آن
-  Future<void> deleteDailyReport(int reportId) async {
-    final db = await instance.database;
-    await db.transaction((txn) async {
-      // ابتدا تمام رکوردهای دان مصرفی مربوط به این گزارش را حذف می‌کنیم
-      await txn.delete('feed_consumptions', where: 'report_id = ?', whereArgs: [reportId]);
-      // سپس خود گزارش اصلی را حذف می‌کنیم
-      await txn.delete('daily_reports', where: 'id = ?', whereArgs: [reportId]);
-    });
-  }
-
-  // این کد را به انتهای کلاس DatabaseHelper اضافه کنید
-  // --- CRUD برای درآمدها (Incomes) ---
   Future<int> insertIncome(Income income) async {
     final db = await database;
-    return await db.insert('incomes', income.toMap(), conflictAlgorithm: ConflictAlgorithm.replace); // ✅ اضافه شد
+    return await db.insert(
+      'incomes',
+      income.toMap(),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
   }
 
   Future<int> updateIncome(Income income) async {
     final db = await database;
-    return await db.update('incomes', income.toMap(), where: 'id = ?', whereArgs: [income.id]);
+    return await db.update(
+      'incomes',
+      income.toMap(),
+      where: 'id = ?',
+      whereArgs: [income.id],
+    );
   }
 
   Future<int> deleteIncome(int id) async {
@@ -321,14 +400,333 @@ class DatabaseHelper {
     return await db.delete('incomes', where: 'id = ?', whereArgs: [id]);
   }
 
-  Future<List<Income>> getIncomesForCycle(int cycleId, {String? category}) async {
+  Future<List<Income>> getIncomesForCycle(
+    int cycleId, {
+    String? category,
+  }) async {
     final db = await database;
     List<Map<String, dynamic>> maps;
     if (category != null) {
-      maps = await db.query('incomes', where: 'cycle_id = ? AND category = ?', whereArgs: [cycleId, category], orderBy: 'id ASC'); // ✅ مشابه برای incomes
+      maps = await db.query(
+        'incomes',
+        where: 'cycle_id = ? AND category = ?',
+        whereArgs: [cycleId, category],
+        orderBy: 'id ASC',
+      );
     } else {
-      maps = await db.query('incomes', where: 'cycle_id = ?', whereArgs: [cycleId], orderBy: 'id ASC'); // ✅
+      maps = await db.query(
+        'incomes',
+        where: 'cycle_id = ?',
+        whereArgs: [cycleId],
+        orderBy: 'id ASC',
+      );
     }
     return List.generate(maps.length, (i) => Income.fromMap(maps[i]));
+  }
+
+  // ================== پشتیبان‌گیری ==================
+  Future<Uint8List> exportDatabase() async {
+    if (_database != null && _database!.isOpen) {
+      await _database!.close();
+      _database = null;
+    }
+
+    final dbFolder = await getDatabasesPath();
+    final dbPath = join(dbFolder, _databaseName);
+    final dbFile = File(dbPath);
+
+    // باز شدن دوباره دیتابیس بعد از بکاپ
+    SchedulerBinding.instance.addPostFrameCallback((_) async => await database);
+
+    return dbFile.readAsBytes();
+  }
+
+  Future<void> importDatabase(Uint8List backupBytes) async {
+    if (_database != null && _database!.isOpen) {
+      await _database!.close();
+      _database = null;
+    }
+    final tempDir = Directory.systemTemp;
+    final tempPath = join(
+      tempDir.path,
+      'temp_backup_${DateTime.now().millisecondsSinceEpoch}.db',
+    );
+    // ذخیره بکاپ موقت
+    await File(tempPath).writeAsBytes(backupBytes);
+    final tempDb = await openDatabase(tempPath);
+    try {
+      // دریافت تمام دوره‌ها از بکاپ
+      final List<Map<String, dynamic>> tempCycles = await tempDb.query(
+        'breeding_cycles',
+      );
+      if (tempCycles.isEmpty) {
+        throw Exception('هیچ دوره‌ای در فایل پشتیبان یافت نشد');
+      }
+
+      // باز کردن دیتابیس اصلی
+      final mainDb = await database;
+
+      // غیرفعال کردن foreign keys برای عملیات ایمن (هرچند cascade وجود دارد، اما برای insert/delete ایمن‌تر)
+      await mainDb.execute('PRAGMA foreign_keys = OFF;');
+
+      // پردازش هر دوره در بکاپ
+      for (final tempCycle in tempCycles) {
+        final String? cycleName =
+            tempCycle['name']; // فیلد 'name' برای شناسایی دوره
+        if (cycleName == null) {
+          print('هشدار: دوره‌ای بدون نام در بکاپ یافت شد، نادیده گرفته می‌شود');
+          continue;
+        }
+
+        // جستجوی دوره موجود با نام مشابه در دیتابیس اصلی
+        final List<Map<String, dynamic>> existingCycles = await mainDb.query(
+          'breeding_cycles',
+          where: 'name = ?',
+          whereArgs: [cycleName],
+        );
+
+        bool isReplace = existingCycles.isNotEmpty;
+        int? existingCycleId;
+        if (isReplace) {
+          existingCycleId = existingCycles.first['id'] as int;
+
+          // قبل از حذف cycle، feeds مربوط به expenses این cycle را حذف کنیم (چون SET NULL است)
+          final existingExpenses = await mainDb.query(
+            'expenses',
+            where: 'cycle_id = ?',
+            whereArgs: [existingCycleId],
+          );
+          for (final exp in existingExpenses) {
+            await mainDb.delete(
+              'feeds',
+              where: 'expense_id = ?',
+              whereArgs: [exp['id']],
+            );
+          }
+
+          // حالا حذف cycle (cascade: expenses, incomes, daily_reports -> feed_consumptions)
+          await mainDb.delete(
+            'breeding_cycles',
+            where: 'id = ?',
+            whereArgs: [existingCycleId],
+          );
+        }
+
+        // درج دوره جدید (بدون id برای auto-increment)
+        final Map<String, dynamic> cycleInsert = Map<String, dynamic>.from(
+          tempCycle,
+        )..remove('id');
+        await mainDb.insert('breeding_cycles', cycleInsert);
+        final newCycleId = Sqflite.firstIntValue(
+          await mainDb.rawQuery('SELECT last_insert_rowid()'),
+        )!;
+
+        // درج daily_reports با cycle_id جدید
+        final List<Map<String, dynamic>> tempDailyReports = await tempDb.query(
+          'daily_reports',
+          where: 'cycle_id = ?',
+          whereArgs: [tempCycle['id']],
+        );
+        for (final tempReport in tempDailyReports) {
+          final Map<String, dynamic> reportInsert =
+              Map<String, dynamic>.from(tempReport)
+                ..['cycle_id'] = newCycleId
+                ..remove('id');
+          final newReportId = await mainDb.insert(
+            'daily_reports',
+            reportInsert,
+          );
+
+          // درج feed_consumptions با report_id جدید
+          final List<Map<String, dynamic>> tempFeedConsumptions = await tempDb
+              .query(
+                'feed_consumptions',
+                where: 'report_id = ?',
+                whereArgs: [tempReport['id']],
+              );
+          for (final tempFeed in tempFeedConsumptions) {
+            final Map<String, dynamic> feedInsert =
+                Map<String, dynamic>.from(tempFeed)
+                  ..['report_id'] = newReportId
+                  ..remove('id');
+            await mainDb.insert('feed_consumptions', feedInsert);
+          }
+        }
+
+        // درج expenses با cycle_id جدید
+        final List<Map<String, dynamic>> tempExpenses = await tempDb.query(
+          'expenses',
+          where: 'cycle_id = ?',
+          whereArgs: [tempCycle['id']],
+        );
+        for (final tempExpense in tempExpenses) {
+          final Map<String, dynamic> expenseInsert =
+              Map<String, dynamic>.from(tempExpense)
+                ..['cycle_id'] = newCycleId
+                ..remove('id');
+          final newExpenseId = await mainDb.insert('expenses', expenseInsert);
+
+          // درج feeds با expense_id جدید (فقط اگر category == 'دان' باشد، اما برای کامل بودن، همه feeds را درج می‌کنیم)
+          final List<Map<String, dynamic>> tempFeeds = await tempDb.query(
+            'feeds',
+            where: 'expense_id = ?',
+            whereArgs: [tempExpense['id']],
+          );
+          for (final tempFeed in tempFeeds) {
+            final Map<String, dynamic> feedInsert =
+                Map<String, dynamic>.from(tempFeed)
+                  ..['expense_id'] = newExpenseId
+                  ..remove('id');
+            await mainDb.insert('feeds', feedInsert);
+          }
+        }
+
+        // درج incomes با cycle_id جدید
+        final List<Map<String, dynamic>> tempIncomes = await tempDb.query(
+          'incomes',
+          where: 'cycle_id = ?',
+          whereArgs: [tempCycle['id']],
+        );
+        for (final tempIncome in tempIncomes) {
+          final Map<String, dynamic> incomeInsert =
+              Map<String, dynamic>.from(tempIncome)
+                ..['cycle_id'] = newCycleId
+                ..remove('id');
+          await mainDb.insert('incomes', incomeInsert);
+        }
+      }
+
+      // فعال کردن مجدد foreign keys
+      await mainDb.execute('PRAGMA foreign_keys = ON;');
+
+      // باز محاسبه feeds اگر لازم (چون feeds جدید درج شده)
+      await _recalculateAndUpdateAllFeeds();
+    } catch (e) {
+      print('خطا در importDatabase: $e');
+      rethrow;
+    } finally {
+      await tempDb.close();
+      await File(tempPath).delete();
+    }
+
+    // باز کردن مجدد دیتابیس
+    SchedulerBinding.instance.addPostFrameCallback((_) async => await database);
+  }
+
+  // ================== انبار دان ==================
+  Future<int> insertFeed(Feed feed) async {
+    final db = await instance.database;
+    final feedMap = Map<String, dynamic>.from(feed.toMap());
+    feedMap['remaining_bags'] = feed.bagCount ?? 0;
+    feedMap['created_at'] = DateTime.now().toIso8601String();
+    return await db.insert('feeds', feedMap);
+  }
+
+  Future<List<Feed>> getFeeds() async {
+    final db = await instance.database;
+    final maps = await db.query('feeds', orderBy: 'created_at ASC');
+    return List.generate(maps.length, (i) => Feed.fromMap(maps[i]));
+  }
+
+  // ================== باز محاسبه FIFO ==================
+  Future<void> _recalculateAndUpdateAllFeeds() async {
+    final db = await database;
+
+    final feedPurchases = await db.query('feeds', orderBy: 'created_at ASC');
+    final List<Map<String, dynamic>> feedsCopy = feedPurchases
+        .map((f) => Map<String, dynamic>.from(f))
+        .toList();
+
+    for (var feed in feedsCopy) {
+      feed['remaining_bags'] = feed['bag_count'];
+    }
+
+    final dailyReports = await db.query(
+      'daily_reports',
+      orderBy: 'report_date ASC',
+    );
+    for (var report in dailyReports) {
+      final feedConsumptions = await db.query(
+        'feed_consumptions',
+        where: 'report_id = ?',
+        whereArgs: [report['id']],
+      );
+
+      for (var consumption in feedConsumptions) {
+        int neededBags = consumption['bag_count'] as int;
+
+        for (var feed in feedsCopy) {
+          if (feed['name'] == consumption['feed_type'] && neededBags > 0) {
+            final available = feed['remaining_bags'] as int;
+            if (available >= neededBags) {
+              feed['remaining_bags'] = available - neededBags;
+              neededBags = 0;
+            } else {
+              feed['remaining_bags'] = 0;
+              neededBags -= available;
+            }
+          }
+        }
+      }
+    }
+
+    for (var feed in feedsCopy) {
+      await db.update(
+        'feeds',
+        {'remaining_bags': feed['remaining_bags']},
+        where: 'id = ?',
+        whereArgs: [feed['id']],
+      );
+    }
+  }
+
+  // ================== همه گزارش‌ها ==================
+  Future<List<DailyReport>> getAllReportsForAllCycles() async {
+    final db = await instance.database;
+    final reportMaps = await db.query(
+      'daily_reports',
+      orderBy: 'report_date ASC',
+    );
+    if (reportMaps.isEmpty) return [];
+
+    final List<DailyReport> reports = [];
+    for (var reportMap in reportMaps) {
+      final feedMaps = await db.query(
+        'feed_consumptions',
+        where: 'report_id = ?',
+        whereArgs: [reportMap['id']],
+      );
+      final feeds = feedMaps
+          .map((feed) => FeedConsumption.fromMap(feed))
+          .toList();
+
+      final baseReport = DailyReport.fromMap(reportMap);
+      reports.add(
+        DailyReport(
+          id: baseReport.id,
+          cycleId: baseReport.cycleId,
+          reportDate: baseReport.reportDate,
+          mortality: baseReport.mortality,
+          medicine: baseReport.medicine,
+          notes: baseReport.notes,
+          feedConsumed: feeds,
+        ),
+      );
+    }
+    return reports;
+  }
+
+  Future<void> endCycle(int cycleId) async {
+    final db = await database;
+    final endDate = DateTime.now().toIso8601String().substring(0, 10);
+    await db.update(
+      tableCycles,
+      {'isActive': false, 'end_date': endDate},
+      where: 'id = ?',
+      whereArgs: [cycleId],
+    );
+    print('==========================================');
+    print('دوره ذخیره شد: ${tableCycles}');
+    print('==========================================');
   }
 }

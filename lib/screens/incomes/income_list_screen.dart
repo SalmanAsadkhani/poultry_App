@@ -9,8 +9,9 @@ import 'add_edit_income_screen.dart';
 class IncomeListScreen extends StatefulWidget {
   final int cycleId;
   final String category;
+  final int remainingChicks;
 
-  const IncomeListScreen({super.key, required this.cycleId, required this.category});
+  const IncomeListScreen({super.key, required this.cycleId, required this.category , required this.remainingChicks});
 
   @override
   State<IncomeListScreen> createState() => _IncomeListScreenState();
@@ -35,7 +36,7 @@ class _IncomeListScreenState extends State<IncomeListScreen> {
     setState(() => _isLoading = true);
     try {
       final incomes = await DatabaseHelper.instance.getIncomesForCycle(widget.cycleId, category: widget.category);
-      _categoryTotal = incomes.fold(0.0, (sum, income) => sum + (income.totalPrice ?? 0.0));
+      _categoryTotal = incomes.fold(0.0, (sum, income) => sum + (income.totalPrice));
       if (widget.category == 'فروش مرغ') {
         _totalQuantity = incomes.fold(0, (sum, i) => sum + (i.quantity ?? 0));
         _totalWeight = incomes.fold(0.0, (sum, i) => sum + (i.weight ?? 0.0)); // مدیریت null با ?? 0.0
@@ -57,7 +58,7 @@ class _IncomeListScreenState extends State<IncomeListScreen> {
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => AddEditIncomeScreen(cycleId: widget.cycleId, category: widget.category),
+        builder: (context) => AddEditIncomeScreen(cycleId: widget.cycleId, category: widget.category ,  remainingChicks: widget.remainingChicks,),
       ),
     );
     if (result == true) {
@@ -73,6 +74,7 @@ class _IncomeListScreenState extends State<IncomeListScreen> {
           cycleId: widget.cycleId,
           category: widget.category,
           income: income,
+             remainingChicks: widget.remainingChicks
         ),
       ),
     );
@@ -145,7 +147,7 @@ class _IncomeListScreenState extends State<IncomeListScreen> {
       builder: (ctx) {
         double averageWeight = 0;
         if (widget.category == 'فروش مرغ' && (income.quantity ?? 0) > 0 && (income.weight ?? 0) > 0) {
-          averageWeight = (income.weight ?? 0) / (income.quantity ?? 1); // مدیریت null با ?? 0 و ?? 1
+          averageWeight = (income.weight ?? 0) / (income.quantity ?? 1); 
         }
 
         return Padding(
@@ -163,7 +165,7 @@ class _IncomeListScreenState extends State<IncomeListScreen> {
               if (averageWeight > 0)
                 _buildInfoRow('میانگین وزن:', '${averageWeight.toStringAsFixed(3)} کیلوگرم', primaryColor),
               _buildInfoRow('قیمت واحد:', income.unitPrice != null ? '${formatter.format(income.unitPrice!)} تومان' : 'ثبت نشده', primaryColor),
-              _buildInfoRow('مبلغ کل:', '${formatter.format(income.totalPrice ?? 0)} تومان', primaryColor, isBold: true),
+              _buildInfoRow('مبلغ کل:', '${formatter.format(income.totalPrice )} تومان', primaryColor, isBold: true),
               if (income.description?.isNotEmpty ?? false) ...[
                 const SizedBox(height: 12),
                 const Text('توضیحات:', style: TextStyle(fontWeight: FontWeight.bold)),

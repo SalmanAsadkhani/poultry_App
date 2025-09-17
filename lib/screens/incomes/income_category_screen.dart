@@ -7,7 +7,8 @@ import 'income_list_screen.dart';
 
 class IncomeCategoryScreen extends StatefulWidget {
   final int cycleId;
-  const IncomeCategoryScreen({super.key, required this.cycleId});
+  final int remainingChicks;
+  const IncomeCategoryScreen({super.key, required this.cycleId , required this.remainingChicks});
 
   @override
   State<IncomeCategoryScreen> createState() => _IncomeCategoryScreenState();
@@ -15,7 +16,7 @@ class IncomeCategoryScreen extends StatefulWidget {
 
 class _IncomeCategoryScreenState extends State<IncomeCategoryScreen> {
   bool _isLoading = true;
-  double _grandTotal = 0.0;
+  double _grandTotal = 0.0; 
   final Map<String, double> _categoryTotals = {
     'فروش مرغ': 0.0,
     'فروش کود': 0.0,
@@ -64,7 +65,7 @@ class _IncomeCategoryScreenState extends State<IncomeCategoryScreen> {
     await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => IncomeListScreen(cycleId: widget.cycleId, category: category),
+        builder: (context) => IncomeListScreen(cycleId: widget.cycleId, category: category , remainingChicks: widget.remainingChicks,),
       ),
     );
     _loadIncomeSummary();

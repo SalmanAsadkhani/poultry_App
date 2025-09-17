@@ -716,17 +716,70 @@ class DatabaseHelper {
     return reports;
   }
 
-  Future<void> endCycle(int cycleId) async {
-    final db = await database;
-    final endDate = DateTime.now().toIso8601String().substring(0, 10);
-    await db.update(
-      tableCycles,
-      {'isActive': false, 'end_date': endDate},
-      where: 'id = ?',
-      whereArgs: [cycleId],
-    );
-    print('==========================================');
-    print('دوره ذخیره شد: ${tableCycles}');
-    print('==========================================');
+Future<void> endCycle(int cycleId, DateTime endDate) async {
+  final db = await database;
+  await db.update(
+    tableCycles,
+    {
+      'isActive': false,
+      'end_date': endDate.toIso8601String().substring(0, 10),
+    },
+    where: 'id = ?',
+    whereArgs: [cycleId],
+  );
+  print('دوره ذخیره شد: $tableCycles');
+}
+
+
+
+  // گرفتن اطلاعات یک دوره
+Future<BreedingCycle?> getCycleById(int cycleId) async {
+  final db = await instance.database;
+  final result = await db.query(
+    'breeding_cycles',
+    where: 'id = ?',
+    whereArgs: [cycleId],
+    limit: 1,
+  );
+  if (result.isNotEmpty) {
+    return BreedingCycle.fromMap(result.first);
   }
+  return null;
+}
+
+// محاسبه مجموع تلفات یک دوره
+Future<int> getTotalMortality(int cycleId) async {
+  final db = await instance.database;
+  final result = await db.rawQuery(
+    'SELECT SUM(mortality) as total FROM daily_reports WHERE cycle_id = ?',
+    [cycleId],
+  );
+  final total = result.first['total'] as int?;
+  return total ?? 0;
+}
+
+// محاسبه مجموع فروش یک دوره
+Future<int> getTotalSold(int cycleId) async {
+  final db = await instance.database;
+  final result = await db.rawQuery(
+    'SELECT SUM(quantity) as total FROM incomes WHERE cycle_id = ?',
+    [cycleId],
+  );
+  final total = result.first['total'] as int?;
+  return total ?? 0;
+}
+
+
+Future<int> getRemainingFlock(int cycleId) async {
+  final cycle = await getCycleById(cycleId);
+  if (cycle == null) return 0;
+
+  final totalMortality = await getTotalMortality(cycleId);
+  final totalSold = await getTotalSold(cycleId);
+
+  final remaining = cycle.chickCount - totalMortality - totalSold;
+  return remaining < 0 ? 0 : remaining;
+}
+
+
 }

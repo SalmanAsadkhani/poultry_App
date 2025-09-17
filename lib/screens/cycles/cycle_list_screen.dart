@@ -4,6 +4,8 @@ import '../../models/breeding_cycle.dart';
 import 'add_edit_cycle_screen.dart';
 import 'cycle_dashboard_screen.dart';
 import '../settings_screen.dart';
+import 'package:shamsi_date/shamsi_date.dart';
+import 'package:mask_text_input_formatter/mask_text_input_formatter.dart';
 
 class CycleListScreen extends StatefulWidget {
   const CycleListScreen({super.key});
@@ -131,16 +133,45 @@ class _CycleListScreenState extends State<CycleListScreen> with SingleTickerProv
   }
 
   Future<void> _endCycle(BreedingCycle cycle) async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
+  final _dateController = TextEditingController();
+  final _dateMaskFormatter = MaskTextInputFormatter(
+    mask: '####/##/##',
+    filter: {"#": RegExp(r'[0-9]')},
+  );
+
+  String? validationError; // برای نمایش خطای اعتبارسنجی زیر فرم
+
+  final confirm = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => StatefulBuilder(
+      builder: (ctx, setState) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         backgroundColor: Theme.of(context).colorScheme.surface,
         title: const Text('پایان دوره', style: TextStyle(fontWeight: FontWeight.bold)),
-        content: Text(
-          'آیا از پایان دادن به «${cycle.name}» مطمئن هستید؟ '
-          'پس از پایان، نمی‌توانید گزارش جدیدی برای این دوره ثبت کنید.',
-          style: const TextStyle(fontSize: 15),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'تاریخ پایان دوره را وارد کنید:',
+              style: TextStyle(fontSize: 15),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _dateController,
+              keyboardType: TextInputType.number,
+              inputFormatters: [_dateMaskFormatter],
+              decoration: InputDecoration(
+                hintText: 'مثال: 1404/06/01',
+                border: const OutlineInputBorder(),
+                errorText: validationError,
+              ),
+              onChanged: (_) {
+                if (validationError != null) {
+                  setState(() => validationError = null);
+                }
+              },
+            ),
+          ],
         ),
         actions: [
           TextButton(
@@ -151,7 +182,52 @@ class _CycleListScreenState extends State<CycleListScreen> with SingleTickerProv
             ),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
+            onPressed: () {
+              final value = _dateController.text.trim();
+              String? error;
+
+              // اعتبارسنجی فرمت
+              if (!RegExp(r'^\d{4}/\d{2}/\d{2}$').hasMatch(value)) {
+                error = 'فرمت تاریخ صحیح نیست.\nمثال: 1404/01/01';
+              } else {
+                try {
+                  final parts = value.split('/');
+                  final jy = int.parse(parts[0]);
+                  final jm = int.parse(parts[1]);
+                  final jd = int.parse(parts[2]);
+
+                  if (jm < 1 || jm > 12) error = 'ماه نامعتبر است';
+                  else if (jd < 1 || jd > 31) error = 'روز نامعتبر است';
+                  else {
+                    final jalaliEnd = Jalali(jy, jm, jd);
+                    final gregorianEnd = jalaliEnd.toGregorian();
+                    final endDate = DateTime(gregorianEnd.year, gregorianEnd.month, gregorianEnd.day);
+
+                    // اعتبارسنجی فاصله 40 روزه با تاریخ شروع
+                    final startParts = cycle.startDate.split('-');
+                    final startDate = Jalali(
+                      int.parse(startParts[0]),
+                      int.parse(startParts[1]),
+                      int.parse(startParts[2]),
+                    ).toGregorian();
+                    final startDateTime = DateTime(startDate.year, startDate.month, startDate.day);
+
+                    if (endDate.difference(startDateTime).inDays < 40) {
+                      error = 'تاریخ پایان باید حداقل ۴۰ روز بعد از شروع دوره باشد';
+                    }
+                  }
+                } catch (e) {
+                  error = 'تاریخ وارد شده معتبر نیست';
+                }
+              }
+
+              if (error != null) {
+                setState(() => validationError = error);
+                return;
+              }
+
+              Navigator.pop(ctx, true);
+            },
             style: FilledButton.styleFrom(
               backgroundColor: Colors.orange.shade600,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
@@ -160,9 +236,22 @@ class _CycleListScreenState extends State<CycleListScreen> with SingleTickerProv
           ),
         ],
       ),
-    );
-    if (confirm != true) return;
-    await DatabaseHelper.instance.endCycle(cycle.id!);
+    ),
+  );
+
+  if (confirm != true) return;
+
+  try {
+    final parts = _dateController.text.split('/');
+    final jy = int.parse(parts[0]);
+    final jm = int.parse(parts[1]);
+    final jd = int.parse(parts[2]);
+
+    final gregorian = Jalali(jy, jm, jd).toGregorian();
+    final endDate = DateTime(gregorian.year, gregorian.month, gregorian.day);
+
+    await DatabaseHelper.instance.endCycle(cycle.id!, endDate);
+
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -181,7 +270,16 @@ class _CycleListScreenState extends State<CycleListScreen> with SingleTickerProv
       );
       _refreshCyclesList();
     }
+  } catch (e) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('خطا در ثبت تاریخ پایان: $e'),
+        backgroundColor: Colors.red.shade600,
+      ),
+    );
   }
+}
+
 
   @override
   Widget build(BuildContext context) {

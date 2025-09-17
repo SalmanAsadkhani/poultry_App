@@ -40,7 +40,6 @@ class _CycleDashboardScreenState extends State<CycleDashboardScreen> with Single
   Map<String, int> _feedBagCountSummary = {};
   double? _fcr;
   double? _productionIndex;
-  int _currentTabIndex = 0; // این متغیر استفاده نشده بود، می‌توانید آن را نگه دارید یا حذف کنید
 
   @override
   void initState() {
@@ -162,7 +161,7 @@ for (var feed in allConsumedFeeds) {
 }
 
 
-      // ۵. محاسبه شاخص‌های عملکرد با فرمول‌های صحیح (فقط برای دوره پایان یافته)
+      
       double? fcr;
       double? productionIndex;
       if (!widget.cycle.isActive && totalSoldWeight > 0 && totalChickensSold > 0) {
@@ -289,9 +288,11 @@ for (var feed in allConsumedFeeds) {
                   cycle: widget.cycle,
                   reports: _reports,
                   onDataChanged: _loadAllData,
+                  
+
                 ),
                 ExpenseCategoryScreen(cycleId: widget.cycle.id!),
-                IncomeCategoryScreen(cycleId: widget.cycle.id!),
+                IncomeCategoryScreen(cycleId: widget.cycle.id!,remainingChicks: _remainingChicks,),
               ],
             ),
     );

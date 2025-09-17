@@ -14,12 +14,14 @@ class AddEditIncomeScreen extends StatefulWidget {
   final int cycleId;
   final String category;
   final Income? income;
+  final int remainingChicks;
 
   const AddEditIncomeScreen({
     super.key,
     required this.cycleId,
     required this.category,
     this.income,
+    required this.remainingChicks, 
   });
 
   @override
@@ -40,6 +42,16 @@ class _AddEditIncomeScreenState extends State<AddEditIncomeScreen> {
   // متغیر State برای نگهداری انتخاب کاربر در دسته متفرقه
   MeasureBy _measureBy = MeasureBy.quantity;
   bool get _isEditing => widget.income != null;
+
+
+   int get _availableChicksForSale {
+    if (_isEditing && widget.category == 'فروش مرغ') {
+      // در حالت ویرایش: موجودی فعلی + تعداد مرغ‌های همین فاکتور
+      return widget.remainingChicks + (widget.income?.quantity ?? 0);
+    }
+    // در حالت ثبت جدید: همان موجودی فعلی
+    return widget.remainingChicks;
+  }
  
   String _formatNumber(num? number) {
     if (number == null || number == 0) return '';
@@ -202,7 +214,15 @@ class _AddEditIncomeScreenState extends State<AddEditIncomeScreen> {
                           border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                           enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: primaryColor.withOpacity(0.3))),
                         ),
-                        validator: (v) => (v == null || v.isEmpty || (int.tryParse(v.replaceAll(',', '')) ?? 0) <= 0) ? 'تعداد الزامی است' : null,
+                         validator: (v) {
+                          if (v == null || v.isEmpty) return 'تعداد الزامی است';
+                          final quantity = int.tryParse(v.replaceAll(',', '')) ?? 0;
+                          if (quantity <= 0) return 'تعداد باید بیشتر از صفر باشد';
+                          if (quantity > _availableChicksForSale) {
+                            return 'تعداد وارد شده از باقی مانده مرغ بیشتر است!\n(موجود: $_availableChicksForSale)';
+                          }
+                          return null;
+                        },
                       ),
                       const SizedBox(height: 16),
                       NumericTextFormField(

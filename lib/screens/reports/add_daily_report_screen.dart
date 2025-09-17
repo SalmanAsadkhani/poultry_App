@@ -23,6 +23,7 @@ class FeedFormEntry {
 
 class AddDailyReportScreen extends StatefulWidget {
   final int cycleId;
+  
   final DailyReport? report;
 
   const AddDailyReportScreen({super.key, required this.cycleId, this.report});
@@ -55,22 +56,41 @@ class _AddDailyReportScreenState extends State<AddDailyReportScreen> {
     }
   }
 
+int? _remainingFlock;
   @override
   void initState() {
     super.initState();
+    
     _allFeeds = [];
     _analytics = FeedConsumptionAnalytics(feeds: [], dailyReports: []);
     _initializeData();
+    _loadRemainingFlock();
+  }
+
+  Future<void> _loadRemainingFlock() async {
+    final remaining = await DatabaseHelper.instance.getRemainingFlock(
+      widget.cycleId,
+    );
+    if (mounted) {
+      setState(() {
+        _remainingFlock = remaining;
+      });
+    }
   }
 
   Future<void> _initializeData() async {
     final allFeedsData = await DatabaseHelper.instance.getFeeds();
-    final reportsData = await DatabaseHelper.instance.getAllReportsForCycle(widget.cycleId);
+    final reportsData = await DatabaseHelper.instance.getAllReportsForCycle(
+      widget.cycleId,
+    );
 
     if (!mounted) return;
 
     _allFeeds = allFeedsData;
-    _analytics = FeedConsumptionAnalytics(feeds: _allFeeds, dailyReports: reportsData);
+    _analytics = FeedConsumptionAnalytics(
+      feeds: _allFeeds,
+      dailyReports: reportsData,
+    );
 
     // انواع دان موجود در انبار
     _feedTypes = _allFeeds.map((f) => f.name.trim()).toSet().toList();
@@ -87,7 +107,9 @@ class _AddDailyReportScreenState extends State<AddDailyReportScreen> {
           existingEntries.add(
             FeedFormEntry(
               feedType: consumedFeed.feedType,
-              bagCountController: TextEditingController(text: _formatNumber(consumedFeed.bagCount)),
+              bagCountController: TextEditingController(
+                text: _formatNumber(consumedFeed.bagCount),
+              ),
               calculatedWeight: consumedFeed.quantity,
             ),
           );
@@ -169,11 +191,16 @@ class _AddDailyReportScreenState extends State<AddDailyReportScreen> {
 
   void _updateCalculatedWeight(int index) {
     final entry = _feedEntries[index];
-    final text = entry.bagCountController.text.replaceAll(RegExp(r'[^0-9]'), '');
+    final text = entry.bagCountController.text.replaceAll(
+      RegExp(r'[^0-9]'),
+      '',
+    );
     final bagCount = int.tryParse(text) ?? 0;
 
     // میانگین وزن واقعی هر کیسه بر اساس موجودی انبار
-    final feedsOfType = _allFeeds.where((f) => f.name.trim() == entry.feedType.trim()).toList();
+    final feedsOfType = _allFeeds
+        .where((f) => f.name.trim() == entry.feedType.trim())
+        .toList();
     double avgWeightPerBag = 0;
     int totalBags = 0;
     double totalWeight = 0;
@@ -196,15 +223,24 @@ class _AddDailyReportScreenState extends State<AddDailyReportScreen> {
     final calculatedWeight = bagCount * avgWeightPerBag;
 
     setState(() {
-      entry.calculatedWeight = double.parse(calculatedWeight.toStringAsFixed(2));
+      entry.calculatedWeight = double.parse(
+        calculatedWeight.toStringAsFixed(2),
+      );
     });
   }
 
   Future<bool> _checkInventory() async {
     final consumptions = _feedEntries
         .map((entry) {
-          final bagCount = int.tryParse(entry.bagCountController.text.replaceAll(',', '')) ?? 0;
-          return FeedConsumption(reportId: 0, feedType: entry.feedType, bagCount: bagCount, quantity: 0.0);
+          final bagCount =
+              int.tryParse(entry.bagCountController.text.replaceAll(',', '')) ??
+              0;
+          return FeedConsumption(
+            reportId: 0,
+            feedType: entry.feedType,
+            bagCount: bagCount,
+            quantity: 0.0,
+          );
         })
         .where((feed) => feed.bagCount > 0)
         .toList();
@@ -255,7 +291,9 @@ class _AddDailyReportScreenState extends State<AddDailyReportScreen> {
 
     final feedsToSave = _feedEntries
         .map((entry) {
-          final bagCount = int.tryParse(entry.bagCountController.text.replaceAll(',', '')) ?? 0;
+          final bagCount =
+              int.tryParse(entry.bagCountController.text.replaceAll(',', '')) ??
+              0;
           final quantity = entry.calculatedWeight;
           return FeedConsumption(
             reportId: 0,
@@ -277,6 +315,45 @@ class _AddDailyReportScreenState extends State<AddDailyReportScreen> {
       return;
     }
 
+    final newMortality =
+        int.tryParse(_mortalityController.text.replaceAll(',', '')) ?? 0;
+
+    // دریافت چرخه از DB برای دسترسی به تعداد اولیه جوجه‌ها
+    final cycle = await DatabaseHelper.instance.getCycleById(widget.cycleId);
+    final initialChicks = cycle != null
+        ? (cycle.chickCount ??
+              0) // اگر مدل شما اسم فیلد را متفاوت دارد، اینجا را اصلاح کن
+        : 0;
+
+    final previousMortality = await DatabaseHelper.instance.getTotalMortality(
+      widget.cycleId,
+    );
+    final previousSales = await DatabaseHelper.instance.getTotalSold(
+      widget.cycleId,
+    );
+
+    // موجودی فعلی گله = اولیه - تلفات قبلی - فروش قبلی
+    final currentFlock = initialChicks - previousMortality - previousSales;
+
+    // اگر در حالت ویرایش هستیم، تلفات قبلی همین گزارش را باید به موجودی اضافه کنیم
+    final adjustedFlock = _isEditing
+        ? currentFlock + (widget.report?.mortality ?? 0)
+        : currentFlock;
+
+    if (newMortality > adjustedFlock) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'خطا: تعداد تلفات (${newMortality}) نمی‌تواند بیشتر از موجودی گله باشد. موجودی فعلی: $adjustedFlock',
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
     setState(() => _isSaving = true);
 
     try {
@@ -289,11 +366,17 @@ class _AddDailyReportScreenState extends State<AddDailyReportScreen> {
           medicine: _medicineController.text,
           notes: _notesController.text,
         );
-        await DatabaseHelper.instance.updateDailyReport(updatedReport, feedsToSave);
+        await DatabaseHelper.instance.updateDailyReport(
+          updatedReport,
+          feedsToSave,
+        );
       } else {
         final newReport = DailyReport(
           cycleId: widget.cycleId,
-          reportDate: Jalali.now().toDateTime().toIso8601String().substring(0, 10),
+          reportDate: Jalali.now().toDateTime().toIso8601String().substring(
+            0,
+            10,
+          ),
           mortality: int.parse(_mortalityController.text.replaceAll(',', '')),
           medicine: _medicineController.text,
           notes: _notesController.text,
@@ -324,25 +407,54 @@ class _AddDailyReportScreenState extends State<AddDailyReportScreen> {
             // تلفات
             Card(
               elevation: 2,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('تلفات امروز', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.teal.shade800)),
+                    Text(
+                      'تلفات امروز',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.teal.shade800,
+                      ),
+                    ),
                     const SizedBox(height: 12),
                     NumericTextFormField(
                       controller: _mortalityController,
                       decoration: InputDecoration(
                         labelText: 'تعداد تلفات',
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                        enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.teal.shade300)),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderSide: BorderSide(color: Colors.teal.shade300),
+                        ),
                       ),
                       validator: (value) {
-                        if (value == null || value.isEmpty) return 'این فیلد الزامی است.';
+                        if (value == null || value.isEmpty)
+                          return 'این فیلد الزامی است.';
                         final number = int.tryParse(value.replaceAll(',', ''));
-                        if (number == null || number < 0) return 'عدد صحیح وارد کنید';
+                        if (number == null || number < 0)
+                          return 'عدد صحیح وارد کنید';
+
+                          
+                        // چک موجودی گله
+                        // چون validator نمیتونه async باشه، باید مقدار موجودی رو از قبل توی State نگه داریم
+                        if (_remainingFlock != null) {
+                          final adjustedFlock = _isEditing
+                              ? _remainingFlock! + (widget.report?.mortality ?? 0)
+                              : _remainingFlock!;
+                          if (number > adjustedFlock) {
+                            return 'تعداد تلفات نمی‌تواند بیشتر از موجودی باشد.\n'
+                           'موجودی فعلی: $adjustedFlock';
+
+                          }
+                        }
                         return null;
                       },
                     ),
@@ -354,21 +466,38 @@ class _AddDailyReportScreenState extends State<AddDailyReportScreen> {
             // دان مصرفی
             Card(
               elevation: 2,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('دان مصرفی', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.teal.shade800)),
+                    Text(
+                      'دان مصرفی',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.teal.shade800,
+                      ),
+                    ),
                     const SizedBox(height: 12),
                     ..._buildFeedFormFields(),
                     const SizedBox(height: 8),
                     ElevatedButton.icon(
                       icon: const Icon(Icons.add, color: Colors.white),
-                      label: const Text('افزودن نوع دیگر دان', style: TextStyle(color: Colors.white)),
+                      label: const Text(
+                        'افزودن نوع دیگر دان',
+                        style: TextStyle(color: Colors.white),
+                      ),
                       onPressed: _addFeedEntry,
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.teal.shade600, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.teal.shade600,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
                     ),
                   ],
                 ),
@@ -378,20 +507,33 @@ class _AddDailyReportScreenState extends State<AddDailyReportScreen> {
             const SizedBox(height: 16),
             Card(
               elevation: 2,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('دارو و واکسن', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.teal.shade800)),
+                    Text(
+                      'دارو و واکسن',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.teal.shade800,
+                      ),
+                    ),
                     const SizedBox(height: 12),
                     TextFormField(
                       controller: _medicineController,
                       decoration: InputDecoration(
                         labelText: 'دارو و واکسن (اختیاری)',
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                        enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.teal.shade300)),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderSide: BorderSide(color: Colors.teal.shade300),
+                        ),
                       ),
                     ),
                   ],
@@ -402,20 +544,33 @@ class _AddDailyReportScreenState extends State<AddDailyReportScreen> {
             const SizedBox(height: 16),
             Card(
               elevation: 2,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('ملاحظات', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.teal.shade800)),
+                    Text(
+                      'ملاحظات',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.teal.shade800,
+                      ),
+                    ),
                     const SizedBox(height: 12),
                     TextFormField(
                       controller: _notesController,
                       decoration: InputDecoration(
                         labelText: 'ملاحظات (اختیاری)',
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                        enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.teal.shade300)),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderSide: BorderSide(color: Colors.teal.shade300),
+                        ),
                       ),
                       maxLines: 3,
                     ),
@@ -427,12 +582,21 @@ class _AddDailyReportScreenState extends State<AddDailyReportScreen> {
             ElevatedButton(
               onPressed: _isSaving ? null : _saveForm,
               child: _isSaving
-                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white))
-                  : Text(_isEditing ? 'ذخیره تغییرات' : 'ثبت گزارش', style: const TextStyle(fontSize: 16)),
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(color: Colors.white),
+                    )
+                  : Text(
+                      _isEditing ? 'ذخیره تغییرات' : 'ثبت گزارش',
+                      style: const TextStyle(fontSize: 16),
+                    ),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.teal.shade700,
                 padding: const EdgeInsets.symmetric(vertical: 12),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
               ),
             ),
           ],
@@ -459,7 +623,12 @@ class _AddDailyReportScreenState extends State<AddDailyReportScreen> {
                   flex: 3,
                   child: DropdownButtonFormField<String>(
                     value: entry.feedType,
-                    items: _feedTypes.map((type) => DropdownMenuItem(value: type, child: Text(type))).toList(),
+                    items: _feedTypes
+                        .map(
+                          (type) =>
+                              DropdownMenuItem(value: type, child: Text(type)),
+                        )
+                        .toList(),
                     onChanged: (value) {
                       if (value != null) {
                         setState(() => entry.feedType = value);
@@ -468,8 +637,12 @@ class _AddDailyReportScreenState extends State<AddDailyReportScreen> {
                     },
                     decoration: InputDecoration(
                       labelText: 'نوع دان',
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                      enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.teal.shade300)),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderSide: BorderSide(color: Colors.teal.shade300),
+                      ),
                     ),
                   ),
                 ),
@@ -480,20 +653,29 @@ class _AddDailyReportScreenState extends State<AddDailyReportScreen> {
                     controller: entry.bagCountController,
                     decoration: InputDecoration(
                       labelText: 'تعداد کیسه',
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                      enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.teal.shade300)),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderSide: BorderSide(color: Colors.teal.shade300),
+                      ),
                     ),
                     onChanged: (_) => _updateCalculatedWeight(index),
                     validator: (value) {
-                      if (value == null || value.isEmpty) return 'تعداد کیسه را وارد کنید';
+                      if (value == null || value.isEmpty)
+                        return 'تعداد کیسه را وارد کنید';
                       final number = int.tryParse(value.replaceAll(',', ''));
-                      if (number == null || number < 0) return 'عدد صحیح وارد کنید';
+                      if (number == null || number < 0)
+                        return 'عدد صحیح وارد کنید';
                       return null;
                     },
                   ),
                 ),
                 IconButton(
-                  icon: const Icon(Icons.remove_circle_outline, color: Colors.red),
+                  icon: const Icon(
+                    Icons.remove_circle_outline,
+                    color: Colors.red,
+                  ),
                   onPressed: () => _removeFeedEntry(index),
                 ),
               ],
@@ -502,10 +684,21 @@ class _AddDailyReportScreenState extends State<AddDailyReportScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('وزن کل: ${entry.calculatedWeight} کیلو',
-                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black87)),
-                Text('موجودی: $availableBags کیسه',
-                    style: const TextStyle(fontSize: 12, color: Colors.deepOrange))
+                Text(
+                  'وزن کل: ${entry.calculatedWeight} کیلو',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87,
+                  ),
+                ),
+                Text(
+                  'موجودی: $availableBags کیسه',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Colors.deepOrange,
+                  ),
+                ),
               ],
             ),
           ],

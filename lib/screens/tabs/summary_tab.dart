@@ -15,6 +15,7 @@ class SummaryTab extends StatefulWidget {
   final double totalFeedWeight;
   final Map<String, int> feedBagCountSummary;
   final Map<String, double> feedWeightSummary;
+  final Map<String, int> feedRemainingBagSummary; 
   final double totalIncome;
   final double totalExpense;
   final BreedingCycle cycle;
@@ -33,6 +34,7 @@ class SummaryTab extends StatefulWidget {
     required this.totalFeedWeight,
     required this.feedBagCountSummary,
     required this.feedWeightSummary,
+    required this.feedRemainingBagSummary,
     required this.totalIncome,
     required this.totalExpense,
     required this.cycle,
@@ -210,35 +212,81 @@ class _SummaryTabState extends State<SummaryTab>
 
   // --- کارت دان ---
   Widget _buildFeedSummaryCard() {
-    return _SummaryCard(
-      title: 'خلاصه مصرف دان',
-      icon: Icons.restaurant,
-      gradientColors: const [Color(0xFFF57C00), Color(0xFFE65100)],
-      child: Column(
-        children: [
-          _buildInfoRow(
-            icon: Icons.scale,
-            label: 'جمع کل وزن مصرفی',
-            value: '${widget.totalFeedWeight.toStringAsFixed(1)} کیلوگرم',
-            color: const Color(0xFFE65100),
-            isBold: true,
-          ),
-          if (widget.feedWeightSummary.isNotEmpty) ...[
-            const Divider(height: 24, thickness: 0.5),
-            ...widget.feedWeightSummary.entries.map((entry) {
-              final bagCount = widget.feedBagCountSummary[entry.key] ?? 0;
-              return _buildInfoRow(
-                icon: Icons.shopping_bag,
-                label: '${entry.key}:',
-                value:
-                    '${entry.value.toStringAsFixed(1)} کیلو ($bagCount کیسه)',
-              );
-            }),
-          ],
+  return _SummaryCard(
+    title: 'خلاصه مصرف دان',
+    icon: Icons.restaurant,
+    gradientColors: const [Color(0xFFF57C00), Color(0xFFE65100)],
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildInfoRow(
+          icon: Icons.scale,
+          label: 'جمع کل وزن مصرفی',
+          value: '${widget.totalFeedWeight.toStringAsFixed(1)} کیلوگرم',
+          color: const Color(0xFFE65100),
+          isBold: true,
+        ),
+        if (widget.feedWeightSummary.isNotEmpty) ...[
+          const Divider(height: 24, thickness: 0.5),
+          ...widget.feedWeightSummary.entries.map((entry) {
+            final bagCount = widget.feedBagCountSummary[entry.key] ?? 0;
+            final remainingBags =
+                widget.feedRemainingBagSummary[entry.key] ?? 0;
+            final consumedWeight = entry.value;
+
+            return Card(
+              elevation: 2,
+              margin: const EdgeInsets.symmetric(vertical: 6),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.shopping_bag,
+                            color: Color(0xFFF57C00)),
+                        const SizedBox(width: 8),
+                        Text(
+                          entry.key,
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.black87,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'مصرف: ${consumedWeight.toStringAsFixed(1)} کیلو  (${bagCount} کیسه)',
+                      style: const TextStyle(fontSize: 14),
+                    ),
+                    if (remainingBags > 0) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        'باقی‌مانده در انبار: $remainingBags کیسه',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: Colors.green,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            );
+          }).toList(),
         ],
-      ),
-    );
-  }
+      ],
+    ),
+  );
+}
+
 
   // --- کارت شاخص تولید ---
   Widget _buildPerformanceCard(BuildContext context) {
@@ -348,6 +396,7 @@ Widget _buildInfoRow({
 }
 
 // --- کارت شاخص تولید ---
+
 class ProductionIndexCard extends StatelessWidget {
   final BreedingCycle cycle;
   final double? fcr;
@@ -371,6 +420,7 @@ class ProductionIndexCard extends StatelessWidget {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Column(
         children: [
+          // هدر کارت
           Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -396,46 +446,50 @@ class ProductionIndexCard extends StatelessWidget {
               ],
             ),
           ),
+
+          // محتوا
           Container(
             color: Colors.white,
-            child: Stack(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    children: [
-                      _buildMetricRow(
-                        context: context,
-                        icon: Icons.sync_alt,
-                        title: 'ضریب تبدیل (FCR)',
-                        value: fcr != null ? fcr!.toStringAsFixed(2) : " - ",
-                        infoText:
-                            'FCR = (وزن کل دان مصرفی) ÷ (وزن کل مرغ فروخته شده)\nهرچه کمتر، بهتر.',
-                      ),
-                      const Divider(
-                          height: 24, thickness: 0.5, indent: 16, endIndent: 16),
-                      _buildMetricRow(
-                        context: context,
-                        icon: Icons.trending_up,
-                        title: 'شاخص تولید',
-                        value: productionIndex != null
-                            ? productionIndex!.toStringAsFixed(2)
-                            : " - ",
-                        infoText:
-                            'شاخص تولید = (درصد زنده‌مانی × میانگین وزن) ÷ (FCR × سن گله) × 10',
-                      ),
-                    ],
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                children: [
+                  // ضریب تبدیل (همیشه در دسترس)
+                  _buildMetricRow(
+                    context: context,
+                    icon: Icons.sync_alt,
+                    title: 'ضریب تبدیل (FCR)',
+                    value: fcr != null ? fcr!.toStringAsFixed(2) : " - ",
+                    infoText:
+                        'ضریب تبدیل =\n (وزن کل دان مصرفی) ÷ (وزن کل مرغ فروخته شده)\n\nهرچه کمتر، بهتر.',
                   ),
-                ),
-                if (cycle.isActive) _buildLockedState(),
-              ],
+
+                  const Divider(
+                      height: 24, thickness: 0.5, indent: 16, endIndent: 16),
+
+                  // شاخص تولید (بسته به وضعیت دوره)
+                  cycle.isActive
+                      ? _buildLockedProductionIndex(context)
+                      : _buildMetricRow(
+                          context: context,
+                          icon: Icons.trending_up,
+                          title: 'شاخص تولید',
+                          value: productionIndex != null
+                              ? productionIndex!.toStringAsFixed(2)
+                              : " - ",
+                          infoText:
+                              'شاخص تولید = (درصد زنده‌مانی × میانگین وزن) ÷ (FCR × سن گله) × 100',
+                        ),
+                ],
+              ),
             ),
-          )
+          ),
         ],
       ),
     );
   }
 
+  // ردیف استاندارد متریک
   static Widget _buildMetricRow({
     required BuildContext context,
     required IconData icon,
@@ -451,7 +505,7 @@ class ProductionIndexCard extends StatelessWidget {
           child: Text(
             title,
             style: const TextStyle(
-                fontSize: 16, fontWeight: FontWeight.w500, color: Colors.black87),
+                fontSize: 16, fontWeight: FontWeight.w600, color: Colors.black87),
           ),
         ),
         Text(
@@ -461,54 +515,68 @@ class ProductionIndexCard extends StatelessWidget {
         ),
         const SizedBox(width: 8),
         IconButton(
-          icon: const Icon(Icons.info_outline, color: Colors.grey, size: 20),
+          icon: const Icon(Icons.info_outline, color: Colors.grey, size: 22),
           onPressed: () => _showInfoDialog(context, title, infoText),
         ),
       ],
     );
   }
 
-  static Widget _buildLockedState() {
-    return Positioned.fill(
-      child: ClipRRect(
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 4, sigmaY: 4),
-          child: Container(
-            color: Colors.white.withOpacity(0.6),
-            child: Center(
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: const [
-                    Icon(Icons.lock, color: _primaryColor, size: 32),
-                    SizedBox(height: 12),
-                    Text(
-                      'این آمار پس از پایان دوره محاسبه خواهد شد.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 15,
-                        color: _primaryColor,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
+  // ردیف قفل برای شاخص تولید (وقتی دوره هنوز فعال است)
+  static Widget _buildLockedProductionIndex(BuildContext context) {
+    return Row(
+      children: [
+        const Icon(Icons.trending_up, color: _primaryColor, size: 28),
+        const SizedBox(width: 16),
+        const Expanded(
+          child: Text(
+            'شاخص تولید',
+            style: TextStyle(
+                fontSize: 16, fontWeight: FontWeight.w600, color: Colors.black87),
           ),
         ),
-      ),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: const [
+            Row(
+              children: [
+                Icon(Icons.lock, color: Colors.grey, size: 18),
+                SizedBox(width: 6),
+                Text(
+                  " - ",
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey,
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: 4),
+           
+          ],
+        ),
+        const SizedBox(width: 8),
+        IconButton(
+          icon: const Icon(Icons.info_outline, color: Colors.grey, size: 22),
+          onPressed: () => _showInfoDialog(
+            context,
+            "شاخص تولید",
+            "شاخص تولید = \n(درصد زنده‌مانی × میانگین وزن)\n ÷ ( ضریب تبدیل × سن گله) × 100\n\n"
+            "⚠️ توجه: این شاخص فقط پس از پایان دوره محاسبه و نمایش داده می‌شود.",
+          ),
+        ),
+      ],
     );
   }
 
+  // دیالوگ توضیحات
   static void _showInfoDialog(
       BuildContext context, String title, String content) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Row(
           children: [
             Icon(Icons.info, color: _accentColor),
@@ -517,14 +585,18 @@ class ProductionIndexCard extends StatelessWidget {
                 style: const TextStyle(fontWeight: FontWeight.bold)),
           ],
         ),
-        content: Text(content,
-            style: const TextStyle(fontSize: 15, height: 1.5)),
+        content: Text(
+          content,
+          style: const TextStyle(fontSize: 15, height: 1.5),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('متوجه شدم',
-                style: TextStyle(
-                    color: _primaryColor, fontWeight: FontWeight.bold)),
+            child: const Text(
+              'متوجه شدم',
+              style: TextStyle(
+                  color: _primaryColor, fontWeight: FontWeight.bold),
+            ),
           ),
         ],
       ),

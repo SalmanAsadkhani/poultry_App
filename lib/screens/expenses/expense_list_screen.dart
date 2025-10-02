@@ -32,7 +32,10 @@ class _ExpenseListScreenState extends State<ExpenseListScreen> {
 Future<void> _loadExpenses() async {
   setState(() => _isLoading = true);
   final expenses = await DatabaseHelper.instance.getExpensesForCycle(widget.cycleId, category: widget.category);
-  _categoryTotal = expenses.fold(0.0, (sum, expense) => sum + expense.totalPrice);
+     _categoryTotal = expenses.fold(
+        0.0,
+        (sum, expense) => sum + (expense.totalPrice),
+      );
   
   // محاسبه جمع کل وزن برای دان
   if (widget.category == 'دان') {
@@ -135,13 +138,16 @@ Future<void> _loadExpenses() async {
               if (widget.category == 'دان') ...[
                 _buildInfoRow('تعداد کیسه:', _formatQuantity(expense.bagCount ?? 0)),
                 _buildInfoRow('وزن کل:', '${_formatQuantity(expense.weight ?? 0)} کیلوگرم'),
-              ] else ...[
-                 _buildInfoRow('تعداد:', _formatQuantity(expense.quantity)),
+              ], 
+              if (expense.weight != null && expense.weight! > 0)
+                _buildInfoRow('وزن کل:', '${_formatQuantity(expense.weight!)} کیلوگرم')  
+              else ...[
+                 _buildInfoRow('تعداد:', _formatQuantity(expense.quantity!)),
               ],
               _buildInfoRow(widget.category == 'دان' ? 'قیمت هر کیلو:' : 'قیمت واحد:', 
                 expense.unitPrice != null ? '${formatter.format(expense.unitPrice)} تومان' : 'ثبت نشده'
               ),
-              _buildInfoRow('قیمت کل:', '${formatter.format(expense.totalPrice)} تومان', isBold: true),
+              _buildInfoRow('مبلغ کل:', '${formatter.format(expense.totalPrice)} تومان', isBold: true),
               const SizedBox(height: 12),
               const Text('توضیحات:', style: TextStyle(fontWeight: FontWeight.bold)),
               Text(expense.description != null && expense.description!.isNotEmpty ? expense.description! : 'ثبت نشده است.'),
@@ -267,9 +273,19 @@ Future<void> _loadExpenses() async {
                                       if (expense.weight != null)
                                         Text('وزن: ${_formatQuantity(expense.weight!)} کیلوگرم', style: TextStyle(color: Colors.grey[700])),
                                     ] else ...[
-                                      Text('تعداد: ${_formatQuantity(expense.quantity)}', style: TextStyle(color: Colors.grey[700])),
-                                      Text('قیمت کل: ${formatter.format(expense.totalPrice)} تومان', style: TextStyle(color: Colors.grey[700])),
+
+                                      if( widget.category == 'متفرقه') ...[
+                                        if(expense.quantity! > 0 ) ...[
+                                          Text('تعداد: ${_formatQuantity(expense.quantity!)}', style: TextStyle(color: Colors.grey[700])),
+                                        ]else ...[
+                                          Text('وزن: ${_formatQuantity(expense.weight!)}', style: TextStyle(color: Colors.grey[700])),
+                                        ],
+                                      ],
+
                                     ],
+
+
+                                      Text('مبلغ کل: ${formatter.format(expense.totalPrice)} تومان', style: TextStyle(color: Colors.grey[700])),
                                   ],
                                 ),
                                 trailing: const Icon(Icons.chevron_right, color: Colors.grey),

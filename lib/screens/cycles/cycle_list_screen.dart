@@ -61,12 +61,14 @@ class _CycleListScreenState extends State<CycleListScreen> with SingleTickerProv
   }
 
   Future<void> _deleteCycle(BreedingCycle cycle) async {
+  // اگر دوره فعال است
+  if (cycle.isActive) {
     bool hasData = await DatabaseHelper.instance.hasRelatedData(cycle.id!);
     if (hasData) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: const Text('این دوره دارای اطلاعات ثبت‌شده است و قابل حذف نیست.'),
+          content: const Text('این دوره فعال دارای گزارش/اطلاعات است و قابل حذف نیست.'),
           backgroundColor: Colors.redAccent.shade200,
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -81,56 +83,63 @@ class _CycleListScreenState extends State<CycleListScreen> with SingleTickerProv
       );
       return;
     }
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        backgroundColor: Theme.of(context).colorScheme.surface,
-        title: const Text('حذف دوره', style: TextStyle(fontWeight: FontWeight.bold)),
-        content: Text(
-          'آیا از حذف «${cycle.name}» مطمئن هستید؟',
-          style: const TextStyle(fontSize: 15),
+  }
+
+  // در اینجا یعنی یا دوره پایان یافته است یا فعال بدون داده است → قابل حذف
+  final confirm = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      title: const Text('حذف دوره', style: TextStyle(fontWeight: FontWeight.bold)),
+      content: Text(
+        'آیا از حذف «${cycle.name}» مطمئن هستید؟',
+        style: const TextStyle(fontSize: 15),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, false),
+          child: Text(
+            'انصراف',
+            style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+          ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text(
-              'انصراف',
-              style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
-            ),
+        FilledButton(
+          onPressed: () => Navigator.pop(ctx, true),
+          style: FilledButton.styleFrom(
+            backgroundColor: Colors.redAccent.shade200,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
           ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: FilledButton.styleFrom(
-              backgroundColor: Colors.redAccent.shade200,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-            ),
-            child: const Text('حذف', style: TextStyle(color: Colors.white)),
-          ),
-        ],
+          child: const Text('حذف', style: TextStyle(color: Colors.white)),
+        ),
+      ],
+    ),
+  );
+
+  if (confirm != true) return;
+
+  await DatabaseHelper.instance.deleteCycle(cycle.id!);
+
+  if (mounted) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('دوره با موفقیت حذف شد.'),
+        backgroundColor: Colors.green.shade600,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        margin: const EdgeInsets.all(12),
+        duration: const Duration(seconds: 3),
+        action: SnackBarAction(
+          label: 'بستن',
+          textColor: Colors.white,
+          onPressed: () {},
+        ),
       ),
     );
-    if (confirm != true) return;
-    await DatabaseHelper.instance.deleteCycle(cycle.id!);
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('دوره با موفقیت حذف شد.'),
-          backgroundColor: Colors.green.shade600,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          margin: const EdgeInsets.all(12),
-          duration: const Duration(seconds: 3),
-          action: SnackBarAction(
-            label: 'بستن',
-            textColor: Colors.white,
-            onPressed: () {},
-          ),
-        ),
-      );
-      _refreshCyclesList();
-    }
+    _refreshCyclesList();
   }
+}
+
 
   Future<void> _endCycle(BreedingCycle cycle) async {
   final _dateController = TextEditingController();
@@ -141,103 +150,104 @@ class _CycleListScreenState extends State<CycleListScreen> with SingleTickerProv
 
   String? validationError; // برای نمایش خطای اعتبارسنجی زیر فرم
 
-  final confirm = await showDialog<bool>(
-    context: context,
-    builder: (ctx) => StatefulBuilder(
-      builder: (ctx, setState) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        backgroundColor: Theme.of(context).colorScheme.surface,
-        title: const Text('پایان دوره', style: TextStyle(fontWeight: FontWeight.bold)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'تاریخ پایان دوره را وارد کنید:',
-              style: TextStyle(fontSize: 15),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _dateController,
-              keyboardType: TextInputType.number,
-              inputFormatters: [_dateMaskFormatter],
-              decoration: InputDecoration(
-                hintText: 'مثال: 1404/06/01',
-                border: const OutlineInputBorder(),
-                errorText: validationError,
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          backgroundColor: Theme.of(context).colorScheme.surface,
+          title: const Text('پایان دوره', style: TextStyle(fontWeight: FontWeight.bold)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'تاریخ پایان دوره را وارد کنید:',
+                style: TextStyle(fontSize: 15),
               ),
-              onChanged: (_) {
-                if (validationError != null) {
-                  setState(() => validationError = null);
+              const SizedBox(height: 12),
+              TextField(
+                controller: _dateController,
+                keyboardType: TextInputType.number,
+                inputFormatters: [_dateMaskFormatter],
+                decoration: InputDecoration(
+                  hintText: 'مثال: 1404/06/01',
+                  helperText: 'اسلش‌ها به صورت خودکار وارد می‌شوند',
+                  border: const OutlineInputBorder(),
+                  errorText: validationError,
+                ),
+                onChanged: (_) {
+                  if (validationError != null) {
+                    setState(() => validationError = null);
+                  }
+                },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(
+                'انصراف',
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+              ),
+            ),
+            FilledButton(
+              onPressed: () {
+                final value = _dateController.text.trim();
+                String? error;
+
+                // اعتبارسنجی فرمت
+                if (!RegExp(r'^\d{4}/\d{2}/\d{2}$').hasMatch(value)) {
+                  error = 'فرمت تاریخ صحیح نیست.\nمثال: 1404/01/01';
+                } else {
+                  try {
+                    final parts = value.split('/');
+                    final jy = int.parse(parts[0]);
+                    final jm = int.parse(parts[1]);
+                    final jd = int.parse(parts[2]);
+
+                    if (jm < 1 || jm > 12) error = 'ماه نامعتبر است';
+                    else if (jd < 1 || jd > 31) error = 'روز نامعتبر است';
+                    else {
+                      final jalaliEnd = Jalali(jy, jm, jd);
+                      final gregorianEnd = jalaliEnd.toGregorian();
+                      final endDate = DateTime(gregorianEnd.year, gregorianEnd.month, gregorianEnd.day);
+
+                      // اعتبارسنجی فاصله 40 روزه با تاریخ شروع
+                      final startParts = cycle.startDate.split('-');
+                      final startDate = Jalali(
+                        int.parse(startParts[0]),
+                        int.parse(startParts[1]),
+                        int.parse(startParts[2]),
+                      ).toGregorian();
+                      final startDateTime = DateTime(startDate.year, startDate.month, startDate.day);
+
+                      if (endDate.difference(startDateTime).inDays < 40) {
+                        error = 'تاریخ پایان باید حداقل ۴۰ روز بعد از شروع دوره باشد';
+                      }
+                    }
+                  } catch (e) {
+                    error = 'تاریخ وارد شده معتبر نیست';
+                  }
                 }
+
+                if (error != null) {
+                  setState(() => validationError = error);
+                  return;
+                }
+
+                Navigator.pop(ctx, true);
               },
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.orange.shade600,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              child: const Text('پایان', style: TextStyle(color: Colors.white)),
             ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text(
-              'انصراف',
-              style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
-            ),
-          ),
-          FilledButton(
-            onPressed: () {
-              final value = _dateController.text.trim();
-              String? error;
-
-              // اعتبارسنجی فرمت
-              if (!RegExp(r'^\d{4}/\d{2}/\d{2}$').hasMatch(value)) {
-                error = 'فرمت تاریخ صحیح نیست.\nمثال: 1404/01/01';
-              } else {
-                try {
-                  final parts = value.split('/');
-                  final jy = int.parse(parts[0]);
-                  final jm = int.parse(parts[1]);
-                  final jd = int.parse(parts[2]);
-
-                  if (jm < 1 || jm > 12) error = 'ماه نامعتبر است';
-                  else if (jd < 1 || jd > 31) error = 'روز نامعتبر است';
-                  else {
-                    final jalaliEnd = Jalali(jy, jm, jd);
-                    final gregorianEnd = jalaliEnd.toGregorian();
-                    final endDate = DateTime(gregorianEnd.year, gregorianEnd.month, gregorianEnd.day);
-
-                    // اعتبارسنجی فاصله 40 روزه با تاریخ شروع
-                    final startParts = cycle.startDate.split('-');
-                    final startDate = Jalali(
-                      int.parse(startParts[0]),
-                      int.parse(startParts[1]),
-                      int.parse(startParts[2]),
-                    ).toGregorian();
-                    final startDateTime = DateTime(startDate.year, startDate.month, startDate.day);
-
-                    if (endDate.difference(startDateTime).inDays < 40) {
-                      error = 'تاریخ پایان باید حداقل ۴۰ روز بعد از شروع دوره باشد';
-                    }
-                  }
-                } catch (e) {
-                  error = 'تاریخ وارد شده معتبر نیست';
-                }
-              }
-
-              if (error != null) {
-                setState(() => validationError = error);
-                return;
-              }
-
-              Navigator.pop(ctx, true);
-            },
-            style: FilledButton.styleFrom(
-              backgroundColor: Colors.orange.shade600,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-            ),
-            child: const Text('پایان', style: TextStyle(color: Colors.white)),
-          ),
-        ],
       ),
-    ),
-  );
+    );
 
   if (confirm != true) return;
 

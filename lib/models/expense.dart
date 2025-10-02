@@ -6,7 +6,7 @@ class Expense {
   final String category;
   final String title;
   final String date;
-  final int quantity; // ✅ نوع داده int است
+  final int? quantity; // ✅ نوع داده int است
   final double? unitPrice;
   final String? description;
   final int? bagCount;
@@ -18,7 +18,7 @@ class Expense {
     required this.category,
     required this.title,
     required this.date,
-    required this.quantity,
+     this.quantity,
     this.unitPrice,
     this.description,
     this.bagCount,
@@ -30,8 +30,20 @@ class Expense {
     if (category == 'دان' && weight != null) {
       return (weight ?? 0) * price;
     }
-    return quantity * price;
+     else if (weight != null && weight! > 0) {
+      return weight! * price;
+    }
+    
+    return (quantity ?? 0) * price;
   }
+  //   double get totalPrice {
+  //   final price = unitPrice ?? 0.0;
+
+  //   if (weight != null && weight! > 0) {
+  //     return weight! * price;
+  //   }
+  //   return (quantity ?? 0) * price;
+  // }
 
   Map<String, dynamic> toMap() {
     return {
@@ -56,11 +68,13 @@ class Expense {
       title: map['title'],
       date: map['date'],
       // ✅ تبدیل امن‌تر برای اطمینان از نوع int
-      quantity: (map['quantity'] as num? ?? 1).toInt(),
+      quantity: (map['quantity'] as num? ?? 0).toInt(),
       unitPrice: map['unit_price']?.toDouble(),
-      description: map['description'] as String?, // ✅ اضافه شد: مستقیم cast به String? (null-safe)
+      description:
+          map['description']
+              as String?, // ✅ اضافه شد: مستقیم cast به String? (null-safe)
       bagCount: (map['bag_count'] as num?)?.toInt(),
-      weight: map['weight']?.toDouble(), 
+      weight: map['weight']?.toDouble(),
     );
   }
 }

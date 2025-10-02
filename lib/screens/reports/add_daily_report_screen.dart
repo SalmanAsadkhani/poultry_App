@@ -435,28 +435,29 @@ int? _remainingFlock;
                           borderSide: BorderSide(color: Colors.teal.shade300),
                         ),
                       ),
-                      validator: (value) {
+                    validator: (value) {
                         if (value == null || value.isEmpty)
                           return 'این فیلد الزامی است.';
+                        
+                        // تبدیل مقدار به عدد صحیح
                         final number = int.tryParse(value.replaceAll(',', ''));
                         if (number == null || number < 0)
                           return 'عدد صحیح وارد کنید';
 
-                          
-                        // چک موجودی گله
-                        // چون validator نمیتونه async باشه، باید مقدار موجودی رو از قبل توی State نگه داریم
-                        if (_remainingFlock != null) {
-                          final adjustedFlock = _isEditing
-                              ? _remainingFlock! + (widget.report?.mortality ?? 0)
-                              : _remainingFlock!;
-                          if (number > adjustedFlock) {
-                            return 'تعداد تلفات نمی‌تواند بیشتر از موجودی باشد.\n'
-                           'موجودی فعلی: $adjustedFlock';
+                        // اگر در حال ویرایش هستیم، مقدار قبلی تلفات را به موجودی اضافه می‌کنیم
+                        final adjustedFlock = _isEditing
+                            ? _remainingFlock! + (widget.report?.mortality ?? 0) // تلفات قبلی را اضافه می‌کنیم
+                            : _remainingFlock!;
 
-                          }
+                        // بررسی اینکه تعداد تلفات بیشتر از موجودی نباشد
+                        if (number > adjustedFlock) {
+                          return 'تعداد تلفات نمی‌تواند بیشتر از موجودی باشد.\n'
+                              'موجودی فعلی: $adjustedFlock';
                         }
+
                         return null;
-                      },
+                      }
+
                     ),
                   ],
                 ),
@@ -696,7 +697,7 @@ int? _remainingFlock;
                   'موجودی: $availableBags کیسه',
                   style: const TextStyle(
                     fontSize: 12,
-                    color: Colors.deepOrange,
+                    color: Colors.deepOrange  ,
                   ),
                 ),
               ],

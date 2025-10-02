@@ -88,7 +88,7 @@ class DatabaseHelper {
           category TEXT NOT NULL,
           title TEXT NOT NULL,
           date TEXT NOT NULL,
-          quantity INTEGER NOT NULL DEFAULT 1,
+          quantity INTEGER,
           unit_price REAL,
           description TEXT,
           bag_count INTEGER,
@@ -160,6 +160,7 @@ class DatabaseHelper {
   }
 
   Future<int> deleteCycle(int id) async {
+    
     final db = await instance.database;
     return await db.delete(tableCycles, where: "id = ?", whereArgs: [id]);
   }
@@ -431,6 +432,7 @@ class DatabaseHelper {
       _database = null;
     }
 
+
     final dbFolder = await getDatabasesPath();
     final dbPath = join(dbFolder, _databaseName);
     final dbFile = File(dbPath);
@@ -442,6 +444,7 @@ class DatabaseHelper {
   }
 
   Future<void> importDatabase(Uint8List backupBytes) async {
+    
     if (_database != null && _database!.isOpen) {
       await _database!.close();
       _database = null;
@@ -779,6 +782,27 @@ Future<int> getRemainingFlock(int cycleId) async {
 
   final remaining = cycle.chickCount - totalMortality - totalSold;
   return remaining < 0 ? 0 : remaining;
+}
+
+
+Future<Map<String, int>> getRemainingFeedBags() async {
+  final feeds = await getFeeds(); // تمام دان‌های موجود در انبار
+  final Map<String, int> summary = {};
+  for (var feed in feeds) {
+    summary[feed.name.trim()] = feed.remainingBags ?? 0;
+  }
+  return summary;
+}
+
+Future<Map<String, double>> getRemainingFeedWeight() async {
+  final feeds = await getFeeds();
+  final Map<String, double> summary = {};
+  for (var feed in feeds) {
+    final remaining = feed.remainingBags ?? 0;
+    final quantityPerBag = (feed.quantity ?? 0) / (feed.bagCount ?? 1);
+    summary[feed.name.trim()] = remaining * quantityPerBag;
+  }
+  return summary;
 }
 
 

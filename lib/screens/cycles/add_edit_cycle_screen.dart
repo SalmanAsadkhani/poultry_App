@@ -223,6 +223,7 @@ class _AddEditCycleScreenState extends State<AddEditCycleScreen> {
                         decoration: InputDecoration(
                           labelText: 'تاریخ شروع',
                           hintText: 'مثال: 1404/06/01',
+                          helperText: 'اسلش‌ها به صورت خودکار وارد می‌شوند',
                           hintStyle: TextStyle(
                             color: const Color.fromARGB(106, 53, 71, 104),
                           ), // ✅ اضافه شده

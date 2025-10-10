@@ -629,23 +629,82 @@ class DatabaseHelper {
     return List.generate(maps.length, (i) => Feed.fromMap(maps[i]));
   }
 
+
+  Future<List<Feed>> getFeedsByCycleId(int cycleId) async {
+    final db = await instance.database;
+    final maps = await db.rawQuery('''
+      SELECT f.* 
+      FROM feeds f
+      INNER JOIN expenses e ON f.expense_id = e.id
+      WHERE e.cycle_id = ?
+      ORDER BY f.created_at ASC
+    ''', [cycleId]);
+    return List.generate(maps.length, (i) => Feed.fromMap(maps[i]));
+  }
+
+  // ✅ متد جدید: خلاصه باقی‌مانده انبار برای دوره جاری
+  Future<Map<String, int>> getRemainingFeedBagsByCycleId(int cycleId) async {
+    final feeds = await getFeedsByCycleId(cycleId);
+    final Map<String, int> summary = {};
+    for (var feed in feeds) {
+      summary[feed.name.trim()] = feed.remainingBags ?? 0;
+    }
+    return summary;
+  }
+
+  // ✅ متد جدید: فقط expenseهای یک category خاص در cycle مشخص
+  Future<List<Expense>> getExpensesByCategoryAndCycle(
+    String category, 
+    int cycleId
+  ) async {
+    final db = await instance.database;
+    final List<Map<String, dynamic>> maps = await db.query(
+      'expenses',
+      where: 'category = ? AND cycle_id = ?',
+      whereArgs: [category, cycleId],
+    );
+    return List.generate(maps.length, (i) => Expense.fromMap(maps[i]));
+  }
+
+
   // ================== باز محاسبه FIFO ==================
   Future<void> _recalculateAndUpdateAllFeeds() async {
-    final db = await database;
+  final db = await database;
 
-    final feedPurchases = await db.query('feeds', orderBy: 'created_at ASC');
-    final List<Map<String, dynamic>> feedsCopy = feedPurchases
+  // تمام دوره‌ها
+  final cycles = await db.query('breeding_cycles');
+
+  for (var cycle in cycles) {
+    final int cycleId = cycle['id'] as int;
+
+    // گرفتن خرید دان‌های مربوط به همین دوره
+    final feedPurchases = await db.rawQuery('''
+      SELECT f.*, e.cycle_id 
+      FROM feeds f
+      INNER JOIN expenses e ON f.expense_id = e.id
+      WHERE e.cycle_id = ?
+      ORDER BY f.created_at ASC
+    ''', [cycleId]);
+
+    if (feedPurchases.isEmpty) continue;
+
+    final feedsCopy = feedPurchases
         .map((f) => Map<String, dynamic>.from(f))
         .toList();
 
+    // همه دان‌ها رو با مقدار اولیه تنظیم کن
     for (var feed in feedsCopy) {
       feed['remaining_bags'] = feed['bag_count'];
     }
 
+    // گزارش‌های روزانه فقط همین دوره
     final dailyReports = await db.query(
       'daily_reports',
+      where: 'cycle_id = ?',
+      whereArgs: [cycleId],
       orderBy: 'report_date ASC',
     );
+
     for (var report in dailyReports) {
       final feedConsumptions = await db.query(
         'feed_consumptions',
@@ -671,6 +730,7 @@ class DatabaseHelper {
       }
     }
 
+    // به‌روزرسانی موجودی دان‌های همین دوره در دیتابیس
     for (var feed in feedsCopy) {
       await db.update(
         'feeds',
@@ -680,6 +740,8 @@ class DatabaseHelper {
       );
     }
   }
+}
+
 
   // ================== همه گزارش‌ها ==================
   Future<List<DailyReport>> getAllReportsForAllCycles() async {
@@ -802,6 +864,7 @@ Future<Map<String, double>> getRemainingFeedWeight() async {
   }
   return summary;
 }
+
 
 
 }

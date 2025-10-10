@@ -18,7 +18,7 @@ class _CycleListScreenState extends State<CycleListScreen> with SingleTickerProv
   late Future<List<BreedingCycle>> _cyclesFuture;
   late AnimationController _animationController;
   String _searchQuery = '';
-  String _filter = 'all'; // Filter state: 'all', 'active', 'inactive'
+  String _filter = 'active'; // Filter state: 'all', 'active', 'inactive'
 
   @override
   void initState() {

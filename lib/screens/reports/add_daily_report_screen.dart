@@ -79,7 +79,7 @@ int? _remainingFlock;
   }
 
   Future<void> _initializeData() async {
-    final allFeedsData = await DatabaseHelper.instance.getFeeds();
+    final allFeedsData = await DatabaseHelper.instance.getFeedsByCycleId(widget.cycleId);
     final reportsData = await DatabaseHelper.instance.getAllReportsForCycle(
       widget.cycleId,
     );

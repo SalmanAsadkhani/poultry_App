@@ -5,18 +5,18 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "pourlty_app",
+            "name": "طیورپرداز",
             "request": "launch",
             "type": "dart"
         },
         {
-            "name": "pourlty_app (profile mode)",
+            "name": "طیورپرداز (profile mode)",
             "request": "launch",
             "type": "dart",
             "flutterMode": "profile"
         },
         {
-            "name": "pourlty_app (release mode)",
+            "name": "طیورپرداز (release mode)",
             "request": "launch",
             "type": "dart",
             "flutterMode": "release"

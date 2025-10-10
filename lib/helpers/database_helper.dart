@@ -432,7 +432,6 @@ class DatabaseHelper {
       _database = null;
     }
 
-
     final dbFolder = await getDatabasesPath();
     final dbPath = join(dbFolder, _databaseName);
     final dbFile = File(dbPath);
@@ -444,7 +443,6 @@ class DatabaseHelper {
   }
 
   Future<void> importDatabase(Uint8List backupBytes) async {
-    
     if (_database != null && _database!.isOpen) {
       await _database!.close();
       _database = null;

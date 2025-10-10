@@ -111,148 +111,91 @@ class _CycleDashboardScreenState extends State<CycleDashboardScreen>
 
   /// [بازنویسی کامل] متد اصلی برای لود و محاسبه تمام اطلاعات به روش صحیح
   Future<void> _loadAllData() async {
-    if (mounted) setState(() => _isLoading = true);
-    try {
-      // ۱. گرفتن تمام دیتاهای لازم از دیتابیس (شامل انبار دان)
-      final results = await Future.wait([
-        DatabaseHelper.instance.getAllReportsForCycle(widget.cycle.id!),
-        DatabaseHelper.instance.getExpensesForCycle(widget.cycle.id!),
-        DatabaseHelper.instance.getIncomesForCycle(widget.cycle.id!),
-        DatabaseHelper.instance.getFeeds(), // <<-- این خط بسیار مهم است
-      ]);
+  if (mounted) setState(() => _isLoading = true);
 
-      final reports = results[0] as List<DailyReport>;
-      final expenses = results[1] as List<Expense>;
-      final incomes = results[2] as List<Income>;
-      final allFeeds = results[3] as List<Feed>;
+  try {
+    // ۱. گرفتن تمام دیتاهای لازم از دیتابیس (شامل انبار دان)
+    final results = await Future.wait([
+      DatabaseHelper.instance.getAllReportsForCycle(widget.cycle.id!),
+      DatabaseHelper.instance.getExpensesForCycle(widget.cycle.id!),
+      DatabaseHelper.instance.getIncomesForCycle(widget.cycle.id!),
+      DatabaseHelper.instance.getFeeds(),
+    ]);
 
-      // ۲. اجرای موتور محاسباتی قدرتمند انبار
-      final analytics = FeedConsumptionAnalytics(
-        feeds: allFeeds,
-        dailyReports: reports,
-      );
-      final analyticsResult = analytics.getAnalytics();
+    final reports = results[0] as List<DailyReport>;
+    final expenses = results[1] as List<Expense>;
+    final incomes = results[2] as List<Income>;
+    final allFeeds = results[3] as List<Feed>;
 
-      // ۳. محاسبه مقادیر خلاصه از منابع صحیح
-      final totalMortality = reports.fold<int>(
-        0,
-        (sum, r) => sum + r.mortality,
-      );
-      final totalIncome = incomes.fold<double>(
-        0,
-        (sum, i) => sum + (i.totalPrice ?? 0),
-      );
-      final totalExpense = expenses.fold<double>(
-        0,
-        (sum, e) => sum + (e.totalPrice ?? 0),
-      );
+    // ۲. جمع تلفات و درآمد و هزینه
+    final totalMortality = reports.fold<int>(0, (sum, r) => sum + r.mortality);
+    final totalIncome = incomes.fold<double>(0, (sum, i) => sum + (i.totalPrice ?? 0));
+    final totalExpense = expenses.fold<double>(0, (sum, e) => sum + (e.totalPrice ?? 0));
 
-      final soldChickensIncomes = incomes
-          .where((i) => i.category == 'فروش مرغ')
-          .toList();
-      final totalChickensSold = soldChickensIncomes.fold<int>(
-        0,
-        (sum, i) => sum + (i.quantity ?? 0),
-      );
-      final totalSoldWeight = soldChickensIncomes.fold<double>(
-        0,
-        (sum, i) => sum + (i.weight ?? 0),
-      );
+    final soldChickensIncomes = incomes.where((i) => i.category == 'فروش مرغ').toList();
+    final totalChickensSold = soldChickensIncomes.fold<int>(0, (sum, i) => sum + (i.quantity ?? 0));
+    final totalSoldWeight = soldChickensIncomes.fold<double>(0, (sum, i) => sum + (i.weight ?? 0));
 
-      final remainingChicks =
-          widget.cycle.chickCount - totalMortality - totalChickensSold;
+    final remainingChicks = widget.cycle.chickCount - totalMortality - totalChickensSold;
 
-      // ۴. گرفتن خلاصه دان از نتیجه صحیح آنالیز (نه محاسبه دستی و اشتباه)
-      // =========================
+    // ۳. جمع مصرف دان
+    final allConsumedFeeds = reports.expand((r) => r.feedConsumed).toList();
+    final totalFeedWeight = allConsumedFeeds.fold(0.0, (s, f) => s + f.quantity);
 
-      // =========================
-      // جمع مصرف دان
-      // =========================
-      final allConsumedFeeds = reports.expand((r) => r.feedConsumed).toList();
+    // ۴. خلاصه بر اساس نوع دان
+    final feedWeightSummary = <String, double>{};
+    final feedBagCountSummary = <String, int>{};
+    final feedRemainingBagSummary = <String, int>{};
 
-      // مجموع وزن کل
-      final totalFeedWeight = allConsumedFeeds.fold(
-        0.0,
-        (s, f) => s + f.quantity,
-      );
-
-      // خلاصه بر اساس نوع دان
-      final feedWeightSummary = <String, double>{};
-      final feedBagCountSummary = <String, int>{};
-      final feedRemainingBagSummary = <String, int>{};
-
-      for (var feed in allConsumedFeeds) {
-        feedWeightSummary.update(
-          feed.feedType,
-          (v) => v + feed.quantity,
-          ifAbsent: () => feed.quantity,
-        );
-        feedBagCountSummary.update(
-          feed.feedType,
-          (v) => v + feed.bagCount,
-          ifAbsent: () => feed.bagCount,
-        );
-      }
-
-      for (var feed in allFeeds) {
-        if (feed.remainingBags != null) {
-          feedRemainingBagSummary.update(
-            feed.name.trim(),
-            (v) => v + feed.remainingBags!,
-            ifAbsent: () => feed.remainingBags!,
-          );
-        }
-
-        double? fcr;
-        double? productionIndex;
-        if (!widget.cycle.isActive &&
-            totalSoldWeight > 0 &&
-            totalChickensSold > 0) {
-          // FCR = وزن کل دان مصرفی / وزن کل مرغ فروخته شده
-          fcr = totalFeedWeight / totalSoldWeight;
-
-          final chickAgeAtSale = _calculateChickAge(
-            widget.cycle,
-          ); // سن در زمان پایان دوره
-
-          final liveability =
-              (widget.cycle.chickCount - totalMortality) /
-              widget.cycle.chickCount *
-              100;
-          final averageWeight = totalSoldWeight / totalChickensSold;
-          // فرمول استاندارد شاخص تولید اروپایی (EPEF)
-          productionIndex =
-              (liveability * averageWeight) / (fcr * chickAgeAtSale) * 100;
-        }
-
-        // ۶. آپدیت نهایی وضعیت (State) با تمام مقادیر صحیح
-        if (mounted) {
-          setState(() {
-            _reports = reports;
-            _chickAge = _calculateChickAge(widget.cycle);
-            _totalMortality = totalMortality;
-            _totalIncome = totalIncome;
-            _totalExpense = totalExpense;
-            _totalChickensSold = totalChickensSold;
-            _totalWeightSold = totalSoldWeight;
-            _remainingChicks = remainingChicks;
-            _totalFeedWeight = totalFeedWeight;
-            _feedWeightSummary = feedWeightSummary;
-            _feedBagCountSummary = feedBagCountSummary;
-            _feedRemainingBagSummary = feedRemainingBagSummary;
-            _fcr = fcr;
-            _productionIndex = productionIndex;
-            _isLoading = false;
-          });
-        }
-      }
-      
-    } catch (e, s) {
-      debugPrint("خطا در لود کردن اطلاعات داشبورد: $e");
-      debugPrint(s.toString());
-      if (mounted) setState(() => _isLoading = false);
+    for (var feed in allConsumedFeeds) {
+      feedWeightSummary.update(feed.feedType, (v) => v + feed.quantity, ifAbsent: () => feed.quantity);
+      feedBagCountSummary.update(feed.feedType, (v) => v + feed.bagCount, ifAbsent: () => feed.bagCount);
     }
+
+    for (var feed in allFeeds) {
+      if (feed.remainingBags != null) {
+        feedRemainingBagSummary.update(feed.name.trim(), (v) => v + feed.remainingBags!, ifAbsent: () => feed.remainingBags!);
+      }
+    }
+
+    // ۵. محاسبه FCR و شاخص تولید (فقط یکبار)
+    double? fcr;
+    double? productionIndex;
+    if (!widget.cycle.isActive && totalSoldWeight > 0 && totalChickensSold > 0) {
+      fcr = totalFeedWeight / totalSoldWeight;
+      final chickAgeAtSale = _calculateChickAge(widget.cycle);
+      final liveability = (widget.cycle.chickCount - totalMortality) / widget.cycle.chickCount * 100;
+      final averageWeight = totalSoldWeight / totalChickensSold;
+      productionIndex = (liveability * averageWeight) / (fcr * chickAgeAtSale) * 100;
+    }
+
+    // ۶. آپدیت نهایی state
+    if (mounted) {
+      setState(() {
+        _reports = reports;
+        _chickAge = _calculateChickAge(widget.cycle);
+        _totalMortality = totalMortality;
+        _totalIncome = totalIncome;
+        _totalExpense = totalExpense;
+        _totalChickensSold = totalChickensSold;
+        _totalWeightSold = totalSoldWeight;
+        _remainingChicks = remainingChicks;
+        _totalFeedWeight = totalFeedWeight;
+        _feedWeightSummary = feedWeightSummary;
+        _feedBagCountSummary = feedBagCountSummary;
+        _feedRemainingBagSummary = feedRemainingBagSummary;
+        _fcr = fcr;
+        _productionIndex = productionIndex;
+        _isLoading = false; // ✅ لودینگ همیشه خاموش می‌شود
+      });
+    }
+  } catch (e, s) {
+    debugPrint("خطا در لود کردن اطلاعات داشبورد: $e");
+    debugPrint(s.toString());
+    if (mounted) setState(() => _isLoading = false);
   }
+}
+
 
   Future<void> _navigateAndAddReport() async {
     final result = await Navigator.push(

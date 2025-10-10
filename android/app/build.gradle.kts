@@ -19,13 +19,23 @@ android {
         jvmTarget = JavaVersion.VERSION_11.toString()
     }
 
-  defaultConfig {
+
+
+defaultConfig {
     applicationId = "com.example.pourlty_app"
-    minSdk = flutter.minSdkVersion // ✅ این خط را به این شکل تغییر دهید
+    minSdk = flutter.minSdkVersion
     targetSdk = flutter.targetSdkVersion
     versionCode = flutter.versionCode
     versionName = flutter.versionName
+
+    // فقط ABI های موبایل رو نگه داریم (x86_64 حذف میشه)
+   ndk {
+    abiFilters.add("armeabi-v7a")
+    abiFilters.add("arm64-v8a")
 }
+
+}
+
 
     buildTypes {
         release {

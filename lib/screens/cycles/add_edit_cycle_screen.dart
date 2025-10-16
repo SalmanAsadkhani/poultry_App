@@ -1,10 +1,9 @@
-// lib/screens/add_edit_cycle_screen.dart
-
 import 'package:flutter/material.dart';
 import 'package:mask_text_input_formatter/mask_text_input_formatter.dart';
 import 'package:shamsi_date/shamsi_date.dart';
 import '../../helpers/database_helper.dart';
 import '../../models/breeding_cycle.dart';
+import '../../models/daily_report.dart';
 import '../../widgets/numeric_text_form_field.dart';
 
 class AddEditCycleScreen extends StatefulWidget {
@@ -26,6 +25,7 @@ class _AddEditCycleScreenState extends State<AddEditCycleScreen> {
   );
   bool _isSaving = false;
   bool get _isEditing => widget.cycle != null;
+  String? _dateError; // برای نمایش خطا در کادر تاریخ
 
   @override
   void initState() {
@@ -46,21 +46,61 @@ class _AddEditCycleScreenState extends State<AddEditCycleScreen> {
   }
 
   Future<void> _saveForm() async {
-    if (!_formKey.currentState!.validate()) return;
+    setState(() => _dateError = null); // پاک کردن خطای قبلی
+    if (!_formKey.currentState!.validate()) {
+      setState(() => _isSaving = false);
+      return;
+    }
     if (_isSaving) return;
     setState(() => _isSaving = true);
+
     try {
+      // تبدیل تاریخ شروع جدید به DateTime
+      final newStartDateParts = _dateController.text.split('/');
+      final newStartJalali = Jalali(
+        int.parse(newStartDateParts[0]),
+        int.parse(newStartDateParts[1]),
+        int.parse(newStartDateParts[2]),
+      );
+      final newStartDate = newStartJalali.toDateTime();
+
+      // اگر در حال ویرایش هستیم، بررسی گزارش‌های موجود
+      if (_isEditing) {
+        final reports = await DatabaseHelper.instance.getAllReportsForCycle(widget.cycle!.id!);
+        if (reports.isNotEmpty) {
+          // پیدا کردن اولین تاریخ گزارش
+          final sortedReports = List<DailyReport>.from(reports)
+            ..sort((a, b) {
+              final aDate = DateTime.parse(a.reportDate);
+              final bDate = DateTime.parse(b.reportDate);
+              return aDate.compareTo(bDate);
+            });
+          final firstReportDate = DateTime.parse(sortedReports.first.reportDate);
+
+          // مقایسه تاریخ شروع جدید با اولین گزارش
+          if (newStartDate.isAfter(firstReportDate)) {
+            if (mounted) {
+              setState(() {
+                _dateError =
+                    'نمی‌توانید تاریخ شروع را به بعد از اولین گزارش \n \t(${sortedReports.first.formattedReportDate}) تغییر دهید.';
+              });
+            }
+            setState(() => _isSaving = false);
+            return;
+          }
+        }
+      }
+
+      // ادامه ذخیره‌سازی اگر مشکلی نبود
       final newCycle = BreedingCycle(
         id: widget.cycle?.id,
         name: _nameController.text,
         chickCount: int.parse(_chickCountController.text.replaceAll(',', '')),
-        startDate: _dateController.text.replaceAll(
-          '/',
-          '-',
-        ), // ذخیره با فرمت YYYY-MM-DD
+        startDate: _dateController.text.replaceAll('/', '-'), // ذخیره با فرمت YYYY-MM-DD
         endDate: '',
         isActive: widget.cycle?.isActive ?? true,
       );
+
       if (_isEditing) {
         await DatabaseHelper.instance.updateCycle(newCycle);
       } else {
@@ -83,23 +123,39 @@ class _AddEditCycleScreenState extends State<AddEditCycleScreen> {
   }
 
   String? _validateShamsiDate(String? value) {
-    if (value == null || value.isEmpty) return 'لطفاً تاریخ را وارد کنید.';
-    if (!RegExp(r'^\d{4}/\d{2}/\d{2}$').hasMatch(value))
-      return 'فرمت تاریخ صحیح نیست.';
+    if (value == null || value.isEmpty) {
+      return 'لطفاً تاریخ را وارد کنید (مثال: 1404/01/01)';
+    }
+    if (!RegExp(r'^\d{4}/\d{2}/\d{2}$').hasMatch(value)) {
+      return 'فرمت تاریخ باید به صورت YYYY/MM/DD\n باشد (مثال: 1404/01/01)';
+    }
 
     try {
       final parts = value.split('/');
-      Jalali(int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
+      final year = int.parse(parts[0]);
+      final month = int.parse(parts[1]);
+      final day = int.parse(parts[2]);
+      final jalali = Jalali(year, month, day);
+      // بررسی معقول بودن تاریخ
+      if (year < 1300 || year > 1500) {
+        return 'سال باید بین 1300 تا 1500 باشد \n(مثال: 1404/01/01)';
+      }
+      if (month < 1 || month > 12) {
+        return 'ماه باید بین 01 تا 12 باشد \n(مثال: 1404/01/01)';
+      }
+      if (day < 1 || day > jalali.monthLength) {
+        return 'روز باید بین 01 تا ${jalali.monthLength.toString().padLeft(2, '0')} \nباشد برای ماه $month';
+      }
       return null;
     } catch (e) {
-      return 'تاریخ وارد شده معتبر نیست.';
+      return 'تاریخ وارد شده معتبر نیست (مثال: 1404/01/01)';
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final primaryColor = Color.fromARGB(255, 17, 92, 67);
-  
+
     return Scaffold(
       appBar: AppBar(
         title: Text(_isEditing ? 'ویرایش دوره' : 'افزودن دوره جدید'),
@@ -137,7 +193,7 @@ class _AddEditCycleScreenState extends State<AddEditCycleScreen> {
                         controller: _nameController,
                         decoration: InputDecoration(
                           labelText: 'نام دوره',
-                          hintText: 'مثال: مرداد ماه ۱۴۰۴', // ✅ اضافه شده
+                          hintText: 'مثال: فروردین ۱۴۰۴',
                           hintStyle: TextStyle(
                             color: const Color.fromARGB(106, 53, 71, 104),
                           ),
@@ -152,8 +208,8 @@ class _AddEditCycleScreenState extends State<AddEditCycleScreen> {
                         ),
                         validator: (value) =>
                             (value == null || value.trim().isEmpty)
-                            ? 'لطفاً نام دوره را وارد کنید.'
-                            : null,
+                                ? 'لطفاً نام دوره را وارد کنید.'
+                                : null,
                       ),
                     ],
                   ),
@@ -176,7 +232,7 @@ class _AddEditCycleScreenState extends State<AddEditCycleScreen> {
                         controller: _chickCountController,
                         decoration: InputDecoration(
                           labelText: 'تعداد جوجه',
-                          hintText: 'مثال: 15,000', // ✅ اضافه شده
+                          hintText: 'مثال: 15,000',
                           hintStyle: TextStyle(
                             color: const Color.fromARGB(106, 53, 71, 104),
                           ),
@@ -222,11 +278,12 @@ class _AddEditCycleScreenState extends State<AddEditCycleScreen> {
                         controller: _dateController,
                         decoration: InputDecoration(
                           labelText: 'تاریخ شروع',
-                          hintText: 'مثال: 1404/06/01',
-                          helperText: 'اسلش‌ها به صورت خودکار وارد می‌شوند',
+                          hintText: 'مثال: 1404/01/01',
+                          helperText: 'تاریخ را به صورت سال/ماه/روز\n (مثل 1404/01/01) وارد کنید',
                           hintStyle: TextStyle(
                             color: const Color.fromARGB(106, 53, 71, 104),
-                          ), // ✅ اضافه شده
+                          ),
+                          errorText: _dateError, // نمایش خطا در کادر
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(8),
                           ),
@@ -235,10 +292,40 @@ class _AddEditCycleScreenState extends State<AddEditCycleScreen> {
                               color: primaryColor.withOpacity(0.3),
                             ),
                           ),
+                          errorBorder: OutlineInputBorder(
+                            borderSide: BorderSide(
+                              color: Colors.red.withOpacity(0.7),
+                              width: 2,
+                            ),
+                          ),
+                          focusedErrorBorder: OutlineInputBorder(
+                            borderSide: BorderSide(
+                              color: Colors.red.withOpacity(0.7),
+                              width: 2,
+                            ),
+                          ),
                         ),
                         keyboardType: TextInputType.number,
+                        textDirection: TextDirection.ltr, // برای اطمینان از چیدمان چپ به راست
+                        textAlign: TextAlign.left, // مکان‌نما در سمت چپ
                         validator: _validateShamsiDate,
                         inputFormatters: [_dateMaskFormatter],
+                        style: const TextStyle(
+                          fontFamily: 'Vazir',
+                          fontSize: 16,
+                        ), 
+                        onTap: () {
+                          // قرار دادن مکان‌نما در انتهای متن
+                          _dateController.selection = TextSelection.fromPosition(
+                            TextPosition(offset: _dateController.text.length),
+                          );
+                        },
+                        onChanged: (value) {
+                          // پاک کردن خطا هنگام تغییر متن
+                          if (_dateError != null) {
+                            setState(() => _dateError = null);
+                          }
+                        },
                       ),
                     ],
                   ),

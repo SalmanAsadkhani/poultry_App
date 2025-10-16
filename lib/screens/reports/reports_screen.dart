@@ -1,5 +1,3 @@
-// lib/screens/reports_screen.dart
-
 import 'package:flutter/material.dart';
 import 'package:shamsi_date/shamsi_date.dart';
 import 'package:collection/collection.dart';
@@ -10,7 +8,7 @@ import '../../models/daily_report.dart';
 import 'add_daily_report_screen.dart';
 import 'report_detail_screen.dart';
 
-// --- توابع کمکی ---
+// --- Helper Functions ---
 Future<void> _onViewDetails(BuildContext context, DailyReport report) async {
   await Navigator.push(
     context,
@@ -23,13 +21,14 @@ Future<void> _onEditReport(
   DailyReport? report,
   int cycleId,
   Future<void> Function() onDataChanged, {
-  required bool hasReportToday,
+  DateTime? initialDate,
+  required bool hasReportForYesterday,
 }) async {
-  if (report == null && hasReportToday) {
+  if (report == null && hasReportForYesterday && initialDate == null) {
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('گزارش امروز قبلاً ثبت شده است.'),
+          content: Text('گزارش روز گذشته قبلاً ثبت شده است.'),
           backgroundColor: Colors.orange,
         ),
       );
@@ -39,9 +38,16 @@ Future<void> _onEditReport(
 
   final result = await Navigator.push<bool?>(
     context,
-    MaterialPageRoute(builder: (context) => AddDailyReportScreen(cycleId: cycleId, report: report)),
+    MaterialPageRoute(
+      builder: (context) => AddDailyReportScreen(
+        cycleId: cycleId,
+        report: report,
+        initialDate: initialDate,
+      ),
+    ),
   );
-  if (result == true) {
+
+  if (result == true && context.mounted) {
     await onDataChanged();
   }
 }
@@ -60,28 +66,24 @@ Future<bool?> _onDeleteReport(
     ),
   );
 
-  if (confirm == true) {
+  if (confirm == true && context.mounted) {
     try {
       await DatabaseHelper.instance.deleteDailyReport(report.id!);
       await onDataChanged();
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('گزارش حذف شد.'), backgroundColor: Colors.green),
-        );
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('گزارش حذف شد.'), backgroundColor: Colors.green),
+      );
     } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('خطا در حذف گزارش: $e'), backgroundColor: Colors.red),
-        );
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('خطا در حذف گزارش: $e'), backgroundColor: Colors.red),
+      );
       return false;
     }
   }
   return confirm;
 }
 
-// --- ویجت اصلی صفحه گزارشات ---
+// --- Main Reports Screen Widget ---
 class ReportsScreen extends StatefulWidget {
   final BreedingCycle cycle;
   final List<DailyReport> reports;
@@ -124,35 +126,73 @@ class _ReportsScreenState extends State<ReportsScreen> with TickerProviderStateM
     super.dispose();
   }
 
-  bool _hasReportForToday() {
-    final today = DateTime.now();
-    return widget.reports.any((report) {
-      final reportDate = DateTime.parse(report.reportDate);
-      return reportDate.year == today.year &&
-          reportDate.month == today.month &&
-          reportDate.day == today.day;
-    });
+  // === تغییرات: توابع کمکی و اصلاحات ===
+
+DateTime? _parseCycleStart() {
+  try {
+    final startParts = widget.cycle.startDate.replaceAll('/', '-').split('-');
+    if (startParts.length != 3) return null;
+    final startJalali = Jalali(
+      int.parse(startParts[0]),
+      int.parse(startParts[1]),
+      int.parse(startParts[2]),
+    );
+    return startJalali.toDateTime();
+  } catch (e) {
+    return null;
+  }
+}
+
+bool _hasReportForYesterday() {
+  final yesterday = DateTime.now().subtract(const Duration(days: 1));
+  final cycleStart = _parseCycleStart();
+  if (cycleStart == null) return false;
+
+  // اگر دیروز قبل از شروع دوره باشد، گزارش برای دیروز قابل ثبت نیست
+  if (yesterday.isBefore(DateTime(cycleStart.year, cycleStart.month, cycleStart.day))) {
+    return false;
   }
 
-  int _calculateAgeInDays(String cycleStartDate, String reportDate) {
+  return widget.reports.any((report) {
     try {
-      final startParts = cycleStartDate.replaceAll('/', '-').split('-');
-      final startJalali = Jalali(int.parse(startParts[0]), int.parse(startParts[1]), int.parse(startParts[2]));
-      final startGregorian = startJalali.toDateTime();
-      final reportGregorian = DateTime.parse(reportDate);
-      return reportGregorian.difference(startGregorian).inDays + 1;
+      final reportDate = DateTime.parse(report.reportDate);
+      return reportDate.year == yesterday.year &&
+          reportDate.month == yesterday.month &&
+          reportDate.day == yesterday.day;
     } catch (e) {
-      return 0;
+      return false;
     }
-  }
+  });
+}
 
-  List<int> _getWeeks() {
-    final groupedReports = groupBy(widget.reports, (DailyReport report) {
-      final days = _calculateAgeInDays(widget.cycle.startDate, report.reportDate);
-      return (days ~/ 7) + 1;
-    });
-    return groupedReports.keys.toList()..sort((a, b) => b.compareTo(a));
+int _calculateAgeInDays(String cycleStartDate, String reportDate) {
+  try {
+    final startParts = cycleStartDate.replaceAll('/', '-').split('-');
+    final startJalali = Jalali(int.parse(startParts[0]), int.parse(startParts[1]), int.parse(startParts[2]));
+    final startGregorian = startJalali.toDateTime();
+    final reportGregorian = DateTime.parse(reportDate);
+    final diff = reportGregorian.difference(startGregorian).inDays + 1;
+    // اگر گزارش قبل از شروع دوره بود، آن را 0 (یا -) در نظر نگیریم — حداقل 0 برگردان
+    return diff < 0 ? 0 : diff;
+  } catch (e) {
+    return 0;
   }
+}
+
+List<int> _getWeeks() {
+  // فقط گزارش‌هایی که سنشان > 0 باشد در نظر بگیر
+  final validReports = widget.reports.where((r) {
+    final days = _calculateAgeInDays(widget.cycle.startDate, r.reportDate);
+    return days > 0;
+  }).toList();
+
+  final groupedReports = groupBy(validReports, (DailyReport report) {
+    final days = _calculateAgeInDays(widget.cycle.startDate, report.reportDate);
+    return (days ~/ 7) + 1;
+  });
+  return groupedReports.keys.toList()..sort((a, b) => b.compareTo(a));
+}
+
 
   double _calculateWeeklyFeed(List<DailyReport> reports) {
     return reports.fold(0.0, (sum, r) => sum + r.feedConsumed.fold(0.0, (s, f) => s + f.quantity));
@@ -328,7 +368,7 @@ class _ReportsScreenState extends State<ReportsScreen> with TickerProviderStateM
                           report,
                           widget.cycle.id!,
                           widget.onDataChanged,
-                          hasReportToday: _hasReportForToday(),
+                          hasReportForYesterday: _hasReportForYesterday(),
                         ),
                         icon: const Icon(Icons.edit, size: 18, color: Colors.orange),
                         padding: EdgeInsets.zero,
@@ -358,32 +398,46 @@ class _ReportsScreenState extends State<ReportsScreen> with TickerProviderStateM
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final hasReportToday = _hasReportForToday();
-    final weeks = _getWeeks();
-
-    if (widget.reports.isEmpty) {
-      return FadeTransition(
-        opacity: _fadeAnimation,
-        child: Scaffold(
-          body: const Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.note_alt_outlined, size: 64, color: Colors.grey),
-                SizedBox(height: 16),
-                Text(
-                  'هنوز گزارشی ثبت نشده است.',
-                  style: TextStyle(fontSize: 18, color: Colors.grey),
-                ),
-              ],
+  Future<DateTime?> _showMissingDaysDialog(List<DateTime> missingDays) async {
+    if (missingDays.isEmpty) {
+      return null;
+    }
+    return showDialog<DateTime>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('انتخاب روز برای ثبت گزارش گذشته'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: missingDays.length,
+              itemBuilder: (context, index) {
+                final day = missingDays[index];
+                final jalaliDate = Jalali.fromDateTime(day);
+                final formatted = '${jalaliDate.year}/${jalaliDate.month}/${jalaliDate.day}';
+                return ListTile(
+                  title: Text('روز $formatted'),
+                  onTap: () => Navigator.pop(ctx, day),
+                );
+              },
             ),
           ),
-          bottomNavigationBar: _buildBottomButton(hasReportToday),
-        ),
-      );
-    }
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, null),
+              child: const Text('انصراف'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final hasReportForYesterday = _hasReportForYesterday();
+    final weeks = _getWeeks();
 
     return Scaffold(
       appBar: AppBar(
@@ -458,39 +512,150 @@ class _ReportsScreenState extends State<ReportsScreen> with TickerProviderStateM
           ),
         ),
       ),
-      bottomNavigationBar: _buildBottomButton(hasReportToday),
+      bottomNavigationBar: _buildBottomButton(hasReportForYesterday),
     );
   }
 
-  Widget _buildBottomButton(bool hasReportToday) {
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: ElevatedButton.icon(
-        onPressed: (widget.cycle.isActive && !hasReportToday)
-            ? () => _onEditReport(
-                  context,
-                  null,
-                  widget.cycle.id!,
-                  widget.onDataChanged,
-                  hasReportToday: hasReportToday,
-                )
-            : null,
-        icon: const Icon(Icons.add, size: 24),
-        label: Text(
-          widget.cycle.isActive
-              ? (hasReportToday ? 'گزارش امروز ثبت شده است' : 'ثبت گزارش روزانه')
-              : 'دوره پایان یافته است',
-          style: const TextStyle(fontSize: 16),
-        ),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: (widget.cycle.isActive && !hasReportToday)
-              ? Colors.teal.shade600
-              : Colors.grey.shade400,
-          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 24),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          minimumSize: const Size(double.infinity, 50),
-        ),
-      ),
-    );
+  Widget _buildBottomButton(bool hasReportForYesterday) {
+  bool isButtonEnabled = widget.cycle.isActive;
+  String buttonText = 'دوره پایان یافته است';
+  List<DateTime> missingDays = [];
+
+  if (widget.cycle.isActive) {
+    final cycleStart = _parseCycleStart();
+    if (cycleStart == null) {
+      isButtonEnabled = false;
+      buttonText = 'تاریخ شروع نامعتبر است';
+    } else {
+      final today = DateTime.now();
+      final yesterday = today.subtract(const Duration(days: 1));
+
+      // اگر دوره هنوز شروع نشده است
+      if (today.isBefore(DateTime(cycleStart.year, cycleStart.month, cycleStart.day))) {
+        isButtonEnabled = false;
+        buttonText = 'دوره هنوز شروع نشده است';
+      } else {
+        // محاسبه تعداد روزهای گذشته از شروع دوره تا امروز (فقط روزهای شامل شده تا دیروز)
+        final daysPassed = today.difference(cycleStart).inDays + 1;
+        // reportedDays محاسبه می‌شود ولی فقط گزارش‌هایی که بعد از شروع دوره باشند شمرده می‌شوند
+        final reportedDays = widget.reports
+            .map((r) {
+              try {
+                final d = DateTime.parse(r.reportDate).difference(cycleStart).inDays + 1;
+                return d;
+              } catch (e) {
+                return null;
+              }
+            })
+            .whereType<int>()
+            .where((d) => d > 0) // فقط روزهای >=1
+            .toSet();
+
+        if (!hasReportForYesterday) {
+          // اما قبل از اجازه دادن بررسی کنیم که دیروز قبل از شروع دوره نباشد
+          if (yesterday.isBefore(DateTime(cycleStart.year, cycleStart.month, cycleStart.day))) {
+            isButtonEnabled = false;
+            buttonText = 'هنوز زمان ثبت گزارش نرسیده است';
+          } else {
+            buttonText = 'ثبت گزارش';
+          }
+        } else {
+          // محاسبه missingDays — فقط روزهای بین شروع دوره تا دیروز را در نظر بگیر
+          final totalDays = daysPassed > 0 ? daysPassed : 0;
+          missingDays = List.generate(totalDays, (i) => i + 1)
+              .where((d) => !reportedDays.contains(d))
+              .map((d) => cycleStart.add(Duration(days: d - 1)))
+              .where((date) => date.isBefore(DateTime(today.year, today.month, today.day)))
+              .toList();
+
+          if (missingDays.isNotEmpty) {
+            buttonText = 'ثبت گزارش فراموش شده';
+          } else {
+            buttonText = 'همه گزارش‌ها ثبت شده‌اند';
+            isButtonEnabled = false;
+          }
+        }
+      }
+    }
   }
+
+  return Padding(
+    padding: const EdgeInsets.all(16),
+    child: ElevatedButton.icon(
+      onPressed: isButtonEnabled
+          ? () async {
+              try {
+                final cycleStart = _parseCycleStart();
+                if (cycleStart == null) return;
+
+                if (!hasReportForYesterday) {
+                  final yesterday = DateTime.now().subtract(const Duration(days: 1));
+                  // باز هم چک کنیم دیروز کمتر از شروع دوره نباشد
+                  if (yesterday.isBefore(DateTime(cycleStart.year, cycleStart.month, cycleStart.day))) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('امکان ثبت گزارش برای روز قبل وجود ندارد.'), backgroundColor: Colors.orange),
+                      );
+                    }
+                    return;
+                  }
+
+                  await _onEditReport(
+                    context,
+                    null,
+                    widget.cycle.id!,
+                    widget.onDataChanged,
+                    initialDate: yesterday,
+                    hasReportForYesterday: hasReportForYesterday,
+                  );
+                } else if (missingDays.isNotEmpty) {
+                  final selectedDate = await _showMissingDaysDialog(missingDays);
+                  if (selectedDate == null || !context.mounted) return;
+
+                  // مطمئن شویم تاریخ انتخاب شده قبل از شروع دوره نیست (اضافی)
+                  if (selectedDate.isBefore(DateTime(cycleStart.year, cycleStart.month, cycleStart.day))) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('تاریخ انتخاب شده قبل از شروع دوره است.'), backgroundColor: Colors.orange),
+                      );
+                    }
+                    return;
+                  }
+
+                  await _onEditReport(
+                    context,
+                    null,
+                    widget.cycle.id!,
+                    widget.onDataChanged,
+                    initialDate: selectedDate,
+                    hasReportForYesterday: hasReportForYesterday,
+                  );
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('خطا در ثبت گزارش: $e'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              }
+            }
+          : null,
+      icon: const Icon(Icons.add, size: 24),
+      label: Text(
+        buttonText,
+        style: const TextStyle(fontSize: 16),
+      ),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: isButtonEnabled ? Colors.teal.shade600 : Colors.grey.shade400,
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 24),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        minimumSize: const Size(double.infinity, 50),
+      ),
+    ),
+  );
+}
+
 }

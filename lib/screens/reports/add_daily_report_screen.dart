@@ -1,5 +1,3 @@
-// lib/screens/daily_report/add_daily_report_screen.dart
-
 import 'package:flutter/material.dart';
 import '../../helpers/database_helper.dart';
 import '../../models/daily_report.dart';
@@ -23,10 +21,15 @@ class FeedFormEntry {
 
 class AddDailyReportScreen extends StatefulWidget {
   final int cycleId;
-  
   final DailyReport? report;
+  final DateTime? initialDate;
 
-  const AddDailyReportScreen({super.key, required this.cycleId, this.report});
+  const AddDailyReportScreen({
+    super.key,
+    required this.cycleId,
+    this.report,
+    this.initialDate,
+  });
 
   @override
   State<AddDailyReportScreen> createState() => _AddDailyReportScreenState();
@@ -38,14 +41,60 @@ class _AddDailyReportScreenState extends State<AddDailyReportScreen> {
   final _medicineController = TextEditingController();
   final _notesController = TextEditingController();
 
-  final List<FeedFormEntry> _feedEntries = [];
+  List<FeedFormEntry> _feedEntries = [];
   List<String> _feedTypes = [];
-
   bool _isSaving = false;
   bool get _isEditing => widget.report != null;
 
-  late List<Feed> _allFeeds;
+  List<Feed>? _allFeeds;
   late FeedConsumptionAnalytics _analytics;
+  int? _remainingFlock;
+  DateTime? _selectedReportDate;
+
+  @override
+  void initState() {
+    super.initState();
+    _analytics = FeedConsumptionAnalytics(feeds: [], dailyReports: []);
+    _selectedReportDate = widget.initialDate ?? Jalali.now().toDateTime();
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    final allFeedsData = await DatabaseHelper.instance.getFeedsByCycleId(widget.cycleId);
+    final reportsData = await DatabaseHelper.instance.getAllReportsForCycle(widget.cycleId);
+
+    if (!mounted) return;
+
+    _allFeeds = allFeedsData;
+    _analytics = FeedConsumptionAnalytics(feeds: _allFeeds!, dailyReports: reportsData);
+    _feedTypes = _allFeeds!.map((f) => f.name.trim()).toSet().toList();
+
+    if (_isEditing) {
+      final report = widget.report!;
+      _mortalityController.text = _formatNumber(report.mortality);
+      _medicineController.text = report.medicine ?? '';
+      _notesController.text = report.notes ?? '';
+      _feedEntries = report.feedConsumed.map((consumedFeed) {
+        return FeedFormEntry(
+          feedType: consumedFeed.feedType,
+          bagCountController: TextEditingController(text: _formatNumber(consumedFeed.bagCount)),
+          calculatedWeight: consumedFeed.quantity,
+        );
+      }).toList();
+      _selectedReportDate = DateTime.parse(report.reportDate);
+    } else {
+      _mortalityController.text = '0';
+      _addFeedEntry();
+    }
+
+    await _loadRemainingFlock();
+    setState(() {});
+  }
+
+  Future<void> _loadRemainingFlock() async {
+    final remaining = await DatabaseHelper.instance.getRemainingFlock(widget.cycleId);
+    if (mounted) setState(() => _remainingFlock = remaining);
+  }
 
   String _formatNumber(num? number) {
     if (number == null) return '';
@@ -56,109 +105,13 @@ class _AddDailyReportScreenState extends State<AddDailyReportScreen> {
     }
   }
 
-int? _remainingFlock;
-  @override
-  void initState() {
-    super.initState();
-    
-    _allFeeds = [];
-    _analytics = FeedConsumptionAnalytics(feeds: [], dailyReports: []);
-    _initializeData();
-    _loadRemainingFlock();
-  }
-
-  Future<void> _loadRemainingFlock() async {
-    final remaining = await DatabaseHelper.instance.getRemainingFlock(
-      widget.cycleId,
-    );
-    if (mounted) {
-      setState(() {
-        _remainingFlock = remaining;
-      });
-    }
-  }
-
-  Future<void> _initializeData() async {
-    final allFeedsData = await DatabaseHelper.instance.getFeedsByCycleId(widget.cycleId);
-    final reportsData = await DatabaseHelper.instance.getAllReportsForCycle(
-      widget.cycleId,
-    );
-
-    if (!mounted) return;
-
-    _allFeeds = allFeedsData;
-    _analytics = FeedConsumptionAnalytics(
-      feeds: _allFeeds,
-      dailyReports: reportsData,
-    );
-
-    // انواع دان موجود در انبار
-    _feedTypes = _allFeeds.map((f) => f.name.trim()).toSet().toList();
-
-    if (_isEditing) {
-      final report = widget.report!;
-      _mortalityController.text = _formatNumber(report.mortality);
-      _medicineController.text = report.medicine ?? '';
-      _notesController.text = report.notes ?? '';
-
-      final List<FeedFormEntry> existingEntries = [];
-      if (report.feedConsumed.isNotEmpty) {
-        for (final consumedFeed in report.feedConsumed) {
-          existingEntries.add(
-            FeedFormEntry(
-              feedType: consumedFeed.feedType,
-              bagCountController: TextEditingController(
-                text: _formatNumber(consumedFeed.bagCount),
-              ),
-              calculatedWeight: consumedFeed.quantity,
-            ),
-          );
-        }
-      } else {
-        existingEntries.add(
-          FeedFormEntry(
-            feedType: _feedTypes.isNotEmpty ? _feedTypes[0] : '',
-            bagCountController: TextEditingController(text: '0'),
-          ),
-        );
-      }
-      _feedEntries.addAll(existingEntries);
-
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        for (int i = 0; i < _feedEntries.length; i++) {
-          _updateCalculatedWeight(i);
-        }
-      });
-    } else {
-      _mortalityController.text = '0';
-      _addFeedEntry();
-    }
-
-    setState(() {});
-  }
-
-  @override
-  void dispose() {
-    _mortalityController.dispose();
-    _medicineController.dispose();
-    _notesController.dispose();
-    for (var entry in _feedEntries) {
-      entry.bagCountController.dispose();
-    }
-    super.dispose();
-  }
-
   void _addFeedEntry({String initialBagCount = '0'}) {
     if (_feedTypes.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('ابتدا باید از بخش هزینه‌ها، دان به انبار اضافه کنید.'),
-          backgroundColor: Colors.red,
-        ),
+        const SnackBar(content: Text('ابتدا باید از بخش هزینه‌ها، دان به انبار اضافه کنید.'), backgroundColor: Colors.red),
       );
       return;
     }
-
     setState(() {
       _feedEntries.add(
         FeedFormEntry(
@@ -167,10 +120,7 @@ int? _remainingFlock;
         ),
       );
     });
-
-    if (_feedEntries.isNotEmpty) {
-      _updateCalculatedWeight(_feedEntries.length - 1);
-    }
+    _updateCalculatedWeight(_feedEntries.length - 1);
   }
 
   void _removeFeedEntry(int index) {
@@ -181,26 +131,17 @@ int? _remainingFlock;
       });
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('حداقل یک ردیف برای دان مصرفی لازم است.'),
-          backgroundColor: Colors.orange,
-        ),
+        const SnackBar(content: Text('حداقل یک ردیف برای دان مصرفی لازم است.'), backgroundColor: Colors.orange),
       );
     }
   }
 
   void _updateCalculatedWeight(int index) {
     final entry = _feedEntries[index];
-    final text = entry.bagCountController.text.replaceAll(
-      RegExp(r'[^0-9]'),
-      '',
-    );
+    final text = entry.bagCountController.text.replaceAll(RegExp(r'[^0-9]'), '');
     final bagCount = int.tryParse(text) ?? 0;
 
-    // میانگین وزن واقعی هر کیسه بر اساس موجودی انبار
-    final feedsOfType = _allFeeds
-        .where((f) => f.name.trim() == entry.feedType.trim())
-        .toList();
+    final feedsOfType = _allFeeds!.where((f) => f.name.trim() == entry.feedType.trim()).toList();
     double avgWeightPerBag = 0;
     int totalBags = 0;
     double totalWeight = 0;
@@ -210,78 +151,59 @@ int? _remainingFlock;
       final weight = feed.quantity ?? 0;
       final bags = feed.bagCount ?? 0;
       if (remaining > 0 && bags > 0) {
-        final avgBagWeight = weight / bags;
-        totalWeight += avgBagWeight * remaining;
+        totalWeight += (weight / bags) * remaining;
         totalBags += remaining;
       }
     }
 
-    if (totalBags > 0) {
-      avgWeightPerBag = totalWeight / totalBags;
-    }
-
-    final calculatedWeight = bagCount * avgWeightPerBag;
-
-    setState(() {
-      entry.calculatedWeight = double.parse(
-        calculatedWeight.toStringAsFixed(2),
-      );
-    });
+    if (totalBags > 0) avgWeightPerBag = totalWeight / totalBags;
+    setState(() => entry.calculatedWeight = double.parse((bagCount * avgWeightPerBag).toStringAsFixed(2)));
   }
 
   Future<bool> _checkInventory() async {
     final consumptions = _feedEntries
         .map((entry) {
-          final bagCount =
-              int.tryParse(entry.bagCountController.text.replaceAll(',', '')) ??
-              0;
+          final bagCount = int.tryParse(entry.bagCountController.text.replaceAll(',', '')) ?? 0;
           return FeedConsumption(
             reportId: 0,
             feedType: entry.feedType,
             bagCount: bagCount,
-            quantity: 0.0,
+            quantity: entry.calculatedWeight,
           );
         })
         .where((feed) => feed.bagCount > 0)
         .toList();
 
     for (final consumption in consumptions) {
-      final requestedBags = consumption.bagCount;
       int availableForCheck;
-
       if (_isEditing) {
-        final currentInventory = _allFeeds
+        final currentInventory = _allFeeds!
             .where((f) => f.name.trim() == consumption.feedType.trim())
             .fold<int>(0, (sum, f) => sum + (f.remainingBags ?? 0));
-
-        int bagsInOldReport = 0;
+        int oldBags = 0;
         try {
           final oldConsumption = widget.report!.feedConsumed.firstWhere(
             (c) => c.feedType.trim() == consumption.feedType.trim(),
           );
-          bagsInOldReport = oldConsumption.bagCount;
+          oldBags = oldConsumption.bagCount;
         } catch (e) {}
-
-        availableForCheck = currentInventory + bagsInOldReport;
+        availableForCheck = currentInventory + oldBags;
       } else {
-        availableForCheck = _allFeeds
+        availableForCheck = _allFeeds!
             .where((f) => f.name.trim() == consumption.feedType.trim())
             .fold<int>(0, (sum, f) => sum + (f.remainingBags ?? 0));
       }
 
-      if (availableForCheck < requestedBags) {
+      if (availableForCheck < consumption.bagCount) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              'موجودی کافی برای "${consumption.feedType}" وجود ندارد. موجودی در دسترس: $availableForCheck کیسه',
-            ),
+            content: Text('موجودی کافی برای "${consumption.feedType}" وجود ندارد. موجودی: $availableForCheck کیسه'),
             backgroundColor: Colors.red,
           ),
         );
         return false;
       }
     }
-
     return true;
   }
 
@@ -291,15 +213,12 @@ int? _remainingFlock;
 
     final feedsToSave = _feedEntries
         .map((entry) {
-          final bagCount =
-              int.tryParse(entry.bagCountController.text.replaceAll(',', '')) ??
-              0;
-          final quantity = entry.calculatedWeight;
+          final bagCount = int.tryParse(entry.bagCountController.text.replaceAll(',', '')) ?? 0;
           return FeedConsumption(
             reportId: 0,
             feedType: entry.feedType,
             bagCount: bagCount,
-            quantity: quantity,
+            quantity: entry.calculatedWeight,
           );
         })
         .where((feed) => feed.bagCount > 0)
@@ -315,42 +234,23 @@ int? _remainingFlock;
       return;
     }
 
-    final newMortality =
-        int.tryParse(_mortalityController.text.replaceAll(',', '')) ?? 0;
+    final newMortality = int.tryParse(_mortalityController.text.replaceAll(',', '')) ?? 0;
 
-    // دریافت چرخه از DB برای دسترسی به تعداد اولیه جوجه‌ها
     final cycle = await DatabaseHelper.instance.getCycleById(widget.cycleId);
-    final initialChicks = cycle != null
-        ? (cycle.chickCount ??
-              0) // اگر مدل شما اسم فیلد را متفاوت دارد، اینجا را اصلاح کن
-        : 0;
+    final initialChicks = cycle?.chickCount ?? 0;
+    final previousMortality = await DatabaseHelper.instance.getTotalMortality(widget.cycleId);
+    final previousSales = await DatabaseHelper.instance.getTotalSold(widget.cycleId);
 
-    final previousMortality = await DatabaseHelper.instance.getTotalMortality(
-      widget.cycleId,
-    );
-    final previousSales = await DatabaseHelper.instance.getTotalSold(
-      widget.cycleId,
-    );
-
-    // موجودی فعلی گله = اولیه - تلفات قبلی - فروش قبلی
     final currentFlock = initialChicks - previousMortality - previousSales;
-
-    // اگر در حالت ویرایش هستیم، تلفات قبلی همین گزارش را باید به موجودی اضافه کنیم
-    final adjustedFlock = _isEditing
-        ? currentFlock + (widget.report?.mortality ?? 0)
-        : currentFlock;
+    final adjustedFlock = _isEditing ? currentFlock + (widget.report?.mortality ?? 0) : currentFlock;
 
     if (newMortality > adjustedFlock) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'خطا: تعداد تلفات (${newMortality}) نمی‌تواند بیشتر از موجودی گله باشد. موجودی فعلی: $adjustedFlock',
-            ),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('خطا: تعداد تلفات ($newMortality) نمی‌تواند بیشتر از موجودی گله ($adjustedFlock) باشد.'),
+          backgroundColor: Colors.red,
+        ),
+      );
       return;
     }
 
@@ -362,22 +262,16 @@ int? _remainingFlock;
           id: widget.report!.id,
           cycleId: widget.cycleId,
           reportDate: widget.report!.reportDate,
-          mortality: int.parse(_mortalityController.text.replaceAll(',', '')),
+          mortality: newMortality,
           medicine: _medicineController.text,
           notes: _notesController.text,
         );
-        await DatabaseHelper.instance.updateDailyReport(
-          updatedReport,
-          feedsToSave,
-        );
+        await DatabaseHelper.instance.updateDailyReport(updatedReport, feedsToSave);
       } else {
         final newReport = DailyReport(
           cycleId: widget.cycleId,
-          reportDate: Jalali.now().toDateTime().toIso8601String().substring(
-            0,
-            10,
-          ),
-          mortality: int.parse(_mortalityController.text.replaceAll(',', '')),
+          reportDate: _selectedReportDate!.toIso8601String().substring(0, 10),
+          mortality: newMortality,
           medicine: _medicineController.text,
           notes: _notesController.text,
         );
@@ -385,31 +279,59 @@ int? _remainingFlock;
       }
 
       if (mounted) Navigator.of(context).pop(true);
-    } finally {
-      if (mounted) setState(() => _isSaving = false);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('خطا در ذخیره گزارش: $e'), backgroundColor: Colors.red),
+        );
+        setState(() => _isSaving = false);
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_allFeeds == null) {
+      return Scaffold(
+        appBar: AppBar(
+          title: Text(_isEditing ? 'ویرایش گزارش' : 'ثبت گزارش روزانه'),
+          backgroundColor: Colors.teal.shade800,
+          foregroundColor: Colors.white,
+        ),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    final jalaliDate = Jalali.fromDateTime(_selectedReportDate!);
+    final formattedDate = '${jalaliDate.year}/${jalaliDate.month.toString().padLeft(2, '0')}/${jalaliDate.day.toString().padLeft(2, '0')}';
+
     return Scaffold(
       appBar: AppBar(
         title: Text(_isEditing ? 'ویرایش گزارش' : 'ثبت گزارش روزانه'),
-        backgroundColor: const Color.fromARGB(255, 5, 114, 99),
-        foregroundColor: const Color.fromARGB(255, 245, 248, 248),
-        elevation: 5,
+        backgroundColor: Colors.teal.shade800,
+        foregroundColor: Colors.white,
       ),
       body: Form(
         key: _formKey,
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            // تلفات
+            if (!_isEditing && widget.initialDate != null)
+              Card(
+                elevation: 2,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Text(
+                    'ثبت گزارش برای: $formattedDate',
+                    style: TextStyle(fontSize: 16, color: Colors.teal.shade800),
+                  ),
+                ),
+              ),
+            const SizedBox(height: 16),
             Card(
               elevation: 2,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
@@ -417,100 +339,135 @@ int? _remainingFlock;
                   children: [
                     Text(
                       'تلفات امروز',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.teal.shade800,
-                      ),
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.teal.shade800),
                     ),
                     const SizedBox(height: 12),
                     NumericTextFormField(
                       controller: _mortalityController,
                       decoration: InputDecoration(
                         labelText: 'تعداد تلفات',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderSide: BorderSide(color: Colors.teal.shade300),
-                        ),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                        enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.teal.shade300)),
                       ),
-                    validator: (value) {
-                        if (value == null || value.isEmpty)
-                          return 'این فیلد الزامی است.';
-                        
-                        // تبدیل مقدار به عدد صحیح
+                      validator: (value) {
+                        if (value == null || value.isEmpty) return 'این فیلد الزامی است.';
                         final number = int.tryParse(value.replaceAll(',', ''));
-                        if (number == null || number < 0)
-                          return 'عدد صحیح وارد کنید';
-
-                        // اگر در حال ویرایش هستیم، مقدار قبلی تلفات را به موجودی اضافه می‌کنیم
-                        final adjustedFlock = _isEditing
-                            ? _remainingFlock! + (widget.report?.mortality ?? 0) // تلفات قبلی را اضافه می‌کنیم
-                            : _remainingFlock!;
-
-                        // بررسی اینکه تعداد تلفات بیشتر از موجودی نباشد
+                        if (number == null || number < 0) return 'عدد صحیح وارد کنید';
+                        final adjustedFlock = _isEditing ? _remainingFlock! + (widget.report?.mortality ?? 0) : _remainingFlock!;
                         if (number > adjustedFlock) {
-                          return 'تعداد تلفات نمی‌تواند بیشتر از موجودی باشد.\n'
-                              'موجودی فعلی: $adjustedFlock';
+                          return 'تعداد تلفات نمی‌تواند بیشتر از موجودی باشد.\nموجودی: $adjustedFlock';
                         }
-
                         return null;
-                      }
-
+                      },
                     ),
                   ],
                 ),
               ),
             ),
             const SizedBox(height: 16),
-            // دان مصرفی
             Card(
               elevation: 2,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'دان مصرفی',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.teal.shade800,
-                      ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'دان مصرفی',
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.teal.shade800),
+                        ),
+                        IconButton(
+                          onPressed: () => _addFeedEntry(),
+                          icon: const Icon(Icons.add_circle, color: Colors.teal),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 12),
-                    ..._buildFeedFormFields(),
-                    const SizedBox(height: 8),
-                    ElevatedButton.icon(
-                      icon: const Icon(Icons.add, color: Colors.white),
-                      label: const Text(
-                        'افزودن نوع دیگر دان',
-                        style: TextStyle(color: Colors.white),
-                      ),
-                      onPressed: _addFeedEntry,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.teal.shade600,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
+                    ...List.generate(_feedEntries.length, (index) {
+                      final entry = _feedEntries[index];
+                      final availableBags = _allFeeds!
+                          .where((f) => f.name.trim() == entry.feedType.trim())
+                          .fold<int>(0, (sum, f) => sum + (f.remainingBags ?? 0));
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Expanded(
+                                  flex: 3,
+                                  child: DropdownButtonFormField<String>(
+                                    value: entry.feedType,
+                                    items: _feedTypes.map((type) => DropdownMenuItem(value: type, child: Text(type))).toList(),
+                                    onChanged: (value) {
+                                      if (value != null) {
+                                        setState(() => entry.feedType = value);
+                                        _updateCalculatedWeight(index);
+                                      }
+                                    },
+                                    decoration: InputDecoration(
+                                      labelText: 'نوع دان',
+                                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                                      enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.teal.shade300)),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  flex: 2,
+                                  child: NumericTextFormField(
+                                    controller: entry.bagCountController,
+                                    decoration: InputDecoration(
+                                      labelText: 'تعداد کیسه',
+                                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                                      enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.teal.shade300)),
+                                    ),
+                                    onChanged: (_) => _updateCalculatedWeight(index),
+                                    validator: (value) {
+                                      if (value == null || value.isEmpty) return 'تعداد کیسه را وارد کنید';
+                                      final number = int.tryParse(value.replaceAll(',', ''));
+                                      if (number == null || number < 0) return 'عدد صحیح وارد کنید';
+                                      return null;
+                                    },
+                                  ),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.remove_circle_outline, color: Colors.red),
+                                  onPressed: () => _removeFeedEntry(index),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  'وزن کل: ${entry.calculatedWeight} کیلو',
+                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black87),
+                                ),
+                                Text(
+                                  'موجودی: $availableBags کیسه',
+                                  style: const TextStyle(fontSize: 12, color: Colors.deepOrange),
+                                ),
+                              ],
+                            ),
+                          ],
                         ),
-                      ),
-                    ),
+                      );
+                    }),
                   ],
                 ),
               ),
             ),
-            // دارو و واکسن
             const SizedBox(height: 16),
             Card(
               elevation: 2,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
@@ -518,36 +475,25 @@ int? _remainingFlock;
                   children: [
                     Text(
                       'دارو و واکسن',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.teal.shade800,
-                      ),
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.teal.shade800),
                     ),
                     const SizedBox(height: 12),
                     TextFormField(
                       controller: _medicineController,
                       decoration: InputDecoration(
                         labelText: 'دارو و واکسن (اختیاری)',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderSide: BorderSide(color: Colors.teal.shade300),
-                        ),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                        enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.teal.shade300)),
                       ),
                     ),
                   ],
                 ),
               ),
             ),
-            // ملاحظات
             const SizedBox(height: 16),
             Card(
               elevation: 2,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
@@ -555,23 +501,15 @@ int? _remainingFlock;
                   children: [
                     Text(
                       'ملاحظات',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.teal.shade800,
-                      ),
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.teal.shade800),
                     ),
                     const SizedBox(height: 12),
                     TextFormField(
                       controller: _notesController,
                       decoration: InputDecoration(
                         labelText: 'ملاحظات (اختیاری)',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderSide: BorderSide(color: Colors.teal.shade300),
-                        ),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                        enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.teal.shade300)),
                       ),
                       maxLines: 3,
                     ),
@@ -582,23 +520,17 @@ int? _remainingFlock;
             const SizedBox(height: 24),
             ElevatedButton(
               onPressed: _isSaving ? null : _saveForm,
-              child: _isSaving
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(color: Colors.white),
-                    )
-                  : Text(
-                      _isEditing ? 'ذخیره تغییرات' : 'ثبت گزارش',
-                      style: const TextStyle(fontSize: 16),
-                    ),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.teal.shade700,
                 padding: const EdgeInsets.symmetric(vertical: 12),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
               ),
+              child: _isSaving
+                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white))
+                  : Text(
+                      _isEditing ? 'ذخیره تغییرات' : 'ثبت گزارش',
+                      style: const TextStyle(fontSize: 16, color: Colors.white),
+                    ),
             ),
           ],
         ),
@@ -606,105 +538,14 @@ int? _remainingFlock;
     );
   }
 
-  List<Widget> _buildFeedFormFields() {
-    return List.generate(_feedEntries.length, (index) {
-      final entry = _feedEntries[index];
-      final availableBags = _allFeeds
-          .where((f) => f.name.trim() == entry.feedType.trim())
-          .fold<int>(0, (sum, f) => sum + (f.remainingBags ?? 0));
-
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  flex: 3,
-                  child: DropdownButtonFormField<String>(
-                    value: entry.feedType,
-                    items: _feedTypes
-                        .map(
-                          (type) =>
-                              DropdownMenuItem(value: type, child: Text(type)),
-                        )
-                        .toList(),
-                    onChanged: (value) {
-                      if (value != null) {
-                        setState(() => entry.feedType = value);
-                        _updateCalculatedWeight(index);
-                      }
-                    },
-                    decoration: InputDecoration(
-                      labelText: 'نوع دان',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderSide: BorderSide(color: Colors.teal.shade300),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  flex: 2,
-                  child: NumericTextFormField(
-                    controller: entry.bagCountController,
-                    decoration: InputDecoration(
-                      labelText: 'تعداد کیسه',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderSide: BorderSide(color: Colors.teal.shade300),
-                      ),
-                    ),
-                    onChanged: (_) => _updateCalculatedWeight(index),
-                    validator: (value) {
-                      if (value == null || value.isEmpty)
-                        return 'تعداد کیسه را وارد کنید';
-                      final number = int.tryParse(value.replaceAll(',', ''));
-                      if (number == null || number < 0)
-                        return 'عدد صحیح وارد کنید';
-                      return null;
-                    },
-                  ),
-                ),
-                IconButton(
-                  icon: const Icon(
-                    Icons.remove_circle_outline,
-                    color: Colors.red,
-                  ),
-                  onPressed: () => _removeFeedEntry(index),
-                ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'وزن کل: ${entry.calculatedWeight} کیلو',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black87,
-                  ),
-                ),
-                Text(
-                  'موجودی: $availableBags کیسه',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: Colors.deepOrange  ,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      );
-    });
+  @override
+  void dispose() {
+    _mortalityController.dispose();
+    _medicineController.dispose();
+    _notesController.dispose();
+    for (var entry in _feedEntries) {
+      entry.bagCountController.dispose();
+    }
+    super.dispose();
   }
 }

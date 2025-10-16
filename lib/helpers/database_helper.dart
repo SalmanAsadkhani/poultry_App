@@ -866,5 +866,17 @@ Future<Map<String, double>> getRemainingFeedWeight() async {
 }
 
 
+// در helpers/database_helper.dart
+
+Future<List<DailyReport>> getReportsForCycle(int cycleId) async {
+  final db = await database;
+  final List<Map<String, dynamic>> maps = await db.query(
+    'daily_reports',
+    where: 'cycleId = ?',
+    whereArgs: [cycleId],
+    orderBy: 'reportDate ASC',
+  );
+  return maps.map((map) => DailyReport.fromMap(map)).toList();
+}
 
 }

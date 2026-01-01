@@ -1,16 +1,19 @@
-# pourlty_app
 
-A new Flutter project.
+Poultry Manager is a Flutter-based mobile application designed to help poultry farmers manage breeding cycles efficiently.
 
-## Getting Started
+Key Features : 
 
-This project is a starting point for a Flutter application.
-
-A few resources to get you started if this is your first Flutter project:
-
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+      Manage breeding cycles
+            Daily reporting (mortality, feed consumption, expenses)
+            Automatic flock stock calculation
+            Expense and income management
+            Detailed reports and analytics
+            Offline-first with local SQLite database
+      
+      Technical Details
+            Built with Flutter (Dart)
+            Local database: SQLite (sqflite)
+      
+      Release Status
+            Pre-release (Beta)
+            Suitable for testing and feedback

@@ -60,36 +60,56 @@ class _AddDailyReportScreenState extends State<AddDailyReportScreen> {
   }
 
   Future<void> _loadData() async {
-    final allFeedsData = await DatabaseHelper.instance.getFeedsByCycleId(widget.cycleId);
-    final reportsData = await DatabaseHelper.instance.getAllReportsForCycle(widget.cycleId);
+  final allFeedsData = await DatabaseHelper.instance.getFeedsByCycleId(widget.cycleId);
+  final reportsData = await DatabaseHelper.instance.getAllReportsForCycle(widget.cycleId);
 
-    if (!mounted) return;
+  if (!mounted) return;
 
-    _allFeeds = allFeedsData;
-    _analytics = FeedConsumptionAnalytics(feeds: _allFeeds!, dailyReports: reportsData);
-    _feedTypes = _allFeeds!.map((f) => f.name.trim()).toSet().toList();
+  _allFeeds = allFeedsData;
+  _analytics = FeedConsumptionAnalytics(feeds: _allFeeds!, dailyReports: reportsData);
 
-    if (_isEditing) {
-      final report = widget.report!;
-      _mortalityController.text = _formatNumber(report.mortality);
-      _medicineController.text = report.medicine ?? '';
-      _notesController.text = report.notes ?? '';
-      _feedEntries = report.feedConsumed.map((consumedFeed) {
-        return FeedFormEntry(
-          feedType: consumedFeed.feedType,
-          bagCountController: TextEditingController(text: _formatNumber(consumedFeed.bagCount)),
-          calculatedWeight: consumedFeed.quantity,
-        );
-      }).toList();
-      _selectedReportDate = DateTime.parse(report.reportDate);
-    } else {
-      _mortalityController.text = '0';
-      _addFeedEntry();
+  // --- تغییر در این بخش ---
+  // فقط دان‌هایی را انتخاب می‌کنیم که موجودی کیسه آن‌ها بیشتر از صفر است
+  _feedTypes = _allFeeds!
+      .where((f) => (f.remainingBags ?? 0) > 0) // فیلتر کردن موجودی‌های صفر
+      .map((f) => f.name.trim())
+      .toSet()
+      .toList();
+  // -----------------------
+
+  if (_isEditing) {
+    final report = widget.report!;
+    // در حالت ویرایش، ممکن است دانی قبلاً ثبت شده باشد که الان موجودی‌اش تمام شده
+    // پس باید نام دان‌های مصرف شده در این گزارش را هم به لیست انواع دان اضافه کنیم 
+    // تا در Dropdown نمایش داده شوند و خطا ندهد
+    for (var consumed in report.feedConsumed) {
+      if (!_feedTypes.contains(consumed.feedType.trim())) {
+        _feedTypes.add(consumed.feedType.trim());
+      }
     }
 
-    await _loadRemainingFlock();
-    setState(() {});
+    _mortalityController.text = _formatNumber(report.mortality);
+    _medicineController.text = report.medicine ?? '';
+    _notesController.text = report.notes ?? '';
+    _feedEntries = report.feedConsumed.map((consumedFeed) {
+      return FeedFormEntry(
+        feedType: consumedFeed.feedType,
+        bagCountController: TextEditingController(text: _formatNumber(consumedFeed.bagCount)),
+        calculatedWeight: consumedFeed.quantity,
+      );
+    }).toList();
+    _selectedReportDate = DateTime.parse(report.reportDate);
+  } else {
+    _mortalityController.text = '0';
+    // فقط اگر دان موجود داشتیم، ردیف اول را اضافه کن
+    if (_feedTypes.isNotEmpty) {
+      _addFeedEntry();
+    }
   }
+
+  await _loadRemainingFlock();
+  setState(() {});
+}
 
   Future<void> _loadRemainingFlock() async {
     final remaining = await DatabaseHelper.instance.getRemainingFlock(widget.cycleId);
@@ -236,23 +256,27 @@ class _AddDailyReportScreenState extends State<AddDailyReportScreen> {
 
     final newMortality = int.tryParse(_mortalityController.text.replaceAll(',', '')) ?? 0;
 
-    final cycle = await DatabaseHelper.instance.getCycleById(widget.cycleId);
-    final initialChicks = cycle?.chickCount ?? 0;
-    final previousMortality = await DatabaseHelper.instance.getTotalMortality(widget.cycleId);
-    final previousSales = await DatabaseHelper.instance.getTotalSold(widget.cycleId);
 
-    final currentFlock = initialChicks - previousMortality - previousSales;
-    final adjustedFlock = _isEditing ? currentFlock + (widget.report?.mortality ?? 0) : currentFlock;
 
-    if (newMortality > adjustedFlock) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('خطا: تعداد تلفات ($newMortality) نمی‌تواند بیشتر از موجودی گله ($adjustedFlock) باشد.'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
+final remainingFlock =
+    await DatabaseHelper.instance.getRemainingFlock(widget.cycleId);
+
+final adjustedFlock = _isEditing
+    ? remainingFlock + (widget.report?.mortality ?? 0)
+    : remainingFlock;
+
+if (newMortality > adjustedFlock) {
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: Text(
+        'خطا: تعداد تلفات ($newMortality) نمی‌تواند بیشتر از موجودی گله ($adjustedFlock) باشد.',
+      ),
+      backgroundColor: Colors.red,
+    ),
+  );
+  return;
+}
+
 
     setState(() => _isSaving = true);
 

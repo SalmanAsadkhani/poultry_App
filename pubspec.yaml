@@ -1,11 +1,9 @@
 name: poultry
 description: "Poultry farm management app: allows users to register and track breeding cycles, manage chick counts, record start and end dates of each cycle, and oversee overall farm operations in a simple and user-friendly interface."
 
-# جلوگیری از انتشار تصادفی به pub.dev
 publish_to: 'none'
 
 version: 1.0.0+2
-
 environment:
   sdk: ^3.9.2
 

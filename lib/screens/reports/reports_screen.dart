@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shamsi_date/shamsi_date.dart';
 import 'package:collection/collection.dart';
-
 import '../../helpers/database_helper.dart';
 import '../../models/breeding_cycle.dart';
 import '../../models/daily_report.dart';
@@ -35,7 +34,6 @@ Future<void> _onEditReport(
     }
     return;
   }
-
   final result = await Navigator.push<bool?>(
     context,
     MaterialPageRoute(
@@ -46,7 +44,6 @@ Future<void> _onEditReport(
       ),
     ),
   );
-
   if (result == true && context.mounted) {
     await onDataChanged();
   }
@@ -65,7 +62,6 @@ Future<bool?> _onDeleteReport(
       ],
     ),
   );
-
   if (confirm == true && context.mounted) {
     try {
       await DatabaseHelper.instance.deleteDailyReport(report.id!);
@@ -83,19 +79,26 @@ Future<bool?> _onDeleteReport(
   return confirm;
 }
 
+// تابعی برای تبدیل اعداد فارسی به انگلیسی
+String convertPersianDigitsToEnglish(String input) {
+  const persianDigits = '۰۱۲۳۴۵۶۷۸۹';
+  const englishDigits = '0123456789';
+  return input.replaceAllMapped(RegExp('[۰-۹]'), (match) {
+    return englishDigits[persianDigits.indexOf(match.group(0)!)];
+  });
+}
+
 // --- Main Reports Screen Widget ---
 class ReportsScreen extends StatefulWidget {
   final BreedingCycle cycle;
   final List<DailyReport> reports;
   final Future<void> Function() onDataChanged;
-
   const ReportsScreen({
     super.key,
     required this.cycle,
     required this.reports,
     required this.onDataChanged,
   });
-
   @override
   State<ReportsScreen> createState() => _ReportsScreenState();
 }
@@ -103,9 +106,12 @@ class ReportsScreen extends StatefulWidget {
 class _ReportsScreenState extends State<ReportsScreen> with TickerProviderStateMixin {
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
-  int? _selectedWeek;
+  late TabController _tabController;
+  List<int> _weeks = [];
   final ScrollController _scrollController = ScrollController();
-
+  bool _isSearching = false;
+  String _searchQuery = '';
+  final TextEditingController _searchController = TextEditingController();
   @override
   void initState() {
     super.initState();
@@ -116,18 +122,35 @@ class _ReportsScreenState extends State<ReportsScreen> with TickerProviderStateM
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
     );
-    _selectedWeek = null;
+    _weeks = _getWeeks();
+    _tabController = TabController(length: _weeks.length + 1, vsync: this);
+    _searchController.addListener(() {
+      setState(() {
+        _searchQuery = convertPersianDigitsToEnglish(_searchController.text);
+        if (_searchQuery.isNotEmpty) {
+          try {
+            int searchAge = int.parse(_searchQuery);
+            int week = (searchAge ~/ 7) + 1;
+            int tabIndex = _weeks.indexOf(week) + 1; // +1 برای تب خلاصه کل
+            if (tabIndex >= 1 && tabIndex < _tabController.length) {
+              _tabController.animateTo(tabIndex);
+            }
+          } catch (e) {
+            // اگر نتوانست parse کند، نادیده بگیر
+          }
+        }
+      });
+    });
   }
-
   @override
   void dispose() {
     _animationController.dispose();
+    _tabController.dispose();
     _scrollController.dispose();
+    _searchController.dispose();
     super.dispose();
   }
-
   // === تغییرات: توابع کمکی و اصلاحات ===
-
 DateTime? _parseCycleStart() {
   try {
     final startParts = widget.cycle.startDate.replaceAll('/', '-').split('-');
@@ -142,17 +165,14 @@ DateTime? _parseCycleStart() {
     return null;
   }
 }
-
 bool _hasReportForYesterday() {
   final yesterday = DateTime.now().subtract(const Duration(days: 1));
   final cycleStart = _parseCycleStart();
   if (cycleStart == null) return false;
-
   // اگر دیروز قبل از شروع دوره باشد، گزارش برای دیروز قابل ثبت نیست
   if (yesterday.isBefore(DateTime(cycleStart.year, cycleStart.month, cycleStart.day))) {
     return false;
   }
-
   return widget.reports.any((report) {
     try {
       final reportDate = DateTime.parse(report.reportDate);
@@ -164,7 +184,6 @@ bool _hasReportForYesterday() {
     }
   });
 }
-
 int _calculateAgeInDays(String cycleStartDate, String reportDate) {
   try {
     final startParts = cycleStartDate.replaceAll('/', '-').split('-');
@@ -178,33 +197,26 @@ int _calculateAgeInDays(String cycleStartDate, String reportDate) {
     return 0;
   }
 }
-
 List<int> _getWeeks() {
   // فقط گزارش‌هایی که سنشان > 0 باشد در نظر بگیر
   final validReports = widget.reports.where((r) {
     final days = _calculateAgeInDays(widget.cycle.startDate, r.reportDate);
     return days > 0;
   }).toList();
-
   final groupedReports = groupBy(validReports, (DailyReport report) {
     final days = _calculateAgeInDays(widget.cycle.startDate, report.reportDate);
     return (days ~/ 7) + 1;
   });
   return groupedReports.keys.toList()..sort((a, b) => b.compareTo(a));
 }
-
-
   double _calculateWeeklyFeed(List<DailyReport> reports) {
     return reports.fold(0.0, (sum, r) => sum + r.feedConsumed.fold(0.0, (s, f) => s + f.quantity));
   }
-
   int _calculateWeeklyMortality(List<DailyReport> reports) {
     return reports.fold(0, (sum, r) => sum + r.mortality);
   }
-
   Widget _buildSummaryCard() {
     if (widget.reports.isEmpty) return const SizedBox.shrink();
-
     final totalMortality = widget.reports.fold(0, (sum, r) => sum + r.mortality);
     final totalFeed = widget.reports.fold(0.0, (sum, r) => sum + r.feedConsumed.fold(0.0, (s, f) => s + f.quantity));
     int flockAge = widget.reports.isNotEmpty
@@ -215,65 +227,65 @@ List<int> _getWeeks() {
                     DateTime.parse(a.reportDate).isAfter(DateTime.parse(b.reportDate)) ? a : b)
                 .reportDate)
         : 0;
-
     return FadeTransition(
       opacity: _fadeAnimation,
       child: Card(
-        margin: const EdgeInsets.all(16),
+        margin: const EdgeInsets.all(0),
         elevation: 4,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         color: Colors.teal.shade50,
         child: Padding(
-          padding: const EdgeInsets.all(16.0),
+          padding: const EdgeInsets.all(5ف),
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Text(
-                'خلاصه کل دوره',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.teal),
+              const Center(
+                child: Text(
+                  'خلاصه کل دوره',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20, color: Colors.teal),
+                ),
               ),
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                alignment: WrapAlignment.center,
-                children: [
-                  _buildStatChip(Icons.airline_seat_flat_angled, 'تلفات کل', '$totalMortality قطعه',
-                      Colors.red.shade400),
-                  _buildStatChip(Icons.grain, 'دان کل', '${totalFeed.toStringAsFixed(1)} کیلوگرم',
-                      Colors.green.shade400),
-                  _buildStatChip(Icons.calendar_today, 'سن گله', '$flockAge روزه', Colors.blue.shade400),
-                ],
-              ),
+              const SizedBox(height: 4),
+              _buildStatCard(Icons.warning_amber_rounded, 'تلفات کل', '$totalMortality قطعه', Colors.red.shade400),
+              const SizedBox(height: 4),
+              _buildStatCard(Icons.grain, 'دان کل', '${totalFeed.toStringAsFixed(1)} کیلوگرم', Colors.green.shade400),
+              const SizedBox(height: 4),
+              _buildStatCard(Icons.calendar_today, 'سن گله', '$flockAge روزه', Colors.blue.shade400),
             ],
           ),
         ),
       ),
     );
   }
-
-  Widget _buildStatChip(IconData icon, String label, String value, Color color) {
+  Widget _buildStatCard(IconData icon, String label, String value, Color color) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.all(10 ),
       decoration: BoxDecoration(
         color: color.withOpacity(0.1),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: color.withOpacity(0.3)),
       ),
-      child: Column(
+      child: Row(
         children: [
           Icon(icon, size: 20, color: color),
-          const SizedBox(height: 4),
-          Text(value, style: TextStyle(fontWeight: FontWeight.bold, color: color)),
-          Text(label, style: TextStyle(fontSize: 12, color: color.withOpacity(0.8))),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(value, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: color)),
+                const SizedBox(height: 2),
+                Text(label, style: TextStyle(fontSize: 14, color: color.withOpacity(0.8))),
+              ],
+            ),
+          ),
         ],
       ),
     );
   }
-
   Widget _buildWeeklyReportSummary(List<DailyReport> reports) {
     final weeklyMortality = _calculateWeeklyMortality(reports);
     final weeklyFeed = _calculateWeeklyFeed(reports);
-
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(12),
@@ -296,14 +308,31 @@ List<int> _getWeeks() {
               style: TextStyle(fontWeight: FontWeight.bold, color: Colors.teal.shade700),
             ),
           ),
-          _buildStatChip(Icons.airline_seat_flat_angled, 'تلفات', '$weeklyMortality قطعه', Colors.red.shade400),
+          _buildStatChip(Icons.warning_amber_rounded, 'تلفات', '$weeklyMortality قطعه', Colors.red.shade400),
           const SizedBox(width: 8),
           _buildStatChip(Icons.grain, 'دان', '${weeklyFeed.toStringAsFixed(1)} کیلوگرم', Colors.green.shade400),
         ],
       ),
     );
   }
-
+  Widget _buildStatChip(IconData icon, String label, String value, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, size: 20, color: color),
+          const SizedBox(height: 4),
+          Text(value, style: TextStyle(fontWeight: FontWeight.bold, color: color)),
+          Text(label, style: TextStyle(fontSize: 12, color: color.withOpacity(0.8))),
+        ],
+      ),
+    );
+  }
   Widget _buildReportListItem(BuildContext context, DailyReport report, double dailyTotalFeed, int ageOnReportDay) {
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 4),
@@ -338,22 +367,32 @@ List<int> _getWeeks() {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        report.formattedReportDate,
-                        style: const TextStyle(
-                            fontWeight: FontWeight.w600, fontSize: 14, color: Color.fromARGB(255, 8, 128, 114)),
+                      Directionality(
+                        textDirection: TextDirection.rtl,
+                        child: Text(
+                          report.formattedReportDate,
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w600, fontSize: 14, color: Color.fromARGB(255, 8, 128, 114)),
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                       const SizedBox(height: 4),
                       Row(
                         children: [
-                          const Icon(Icons.airline_seat_flat_angled, size: 14, color: Colors.red),
+                          const Icon(Icons.warning_amber_rounded, size: 14, color: Colors.red),
                           const SizedBox(width: 4),
-                          Text("تلفات: ${report.mortality}", style: const TextStyle(fontSize: 12, color: Colors.red)),
+                          Directionality(
+                            textDirection: TextDirection.rtl,
+                            child: Text("تلفات: ${report.mortality}", style: const TextStyle(fontSize: 12, color: Colors.red), overflow: TextOverflow.ellipsis),
+                          ),
                           const SizedBox(width: 16),
                           const Icon(Icons.grain, size: 14, color: Colors.green),
                           const SizedBox(width: 4),
-                          Text("${dailyTotalFeed.toStringAsFixed(1)}kg",
-                              style: const TextStyle(fontSize: 12, color: Colors.green)),
+                          Directionality(
+                            textDirection: TextDirection.rtl,
+                            child: Text("${dailyTotalFeed.toStringAsFixed(1)}kg",
+                                style: const TextStyle(fontSize: 12, color: Colors.green), overflow: TextOverflow.ellipsis),
+                          ),
                         ],
                       ),
                     ],
@@ -397,7 +436,6 @@ List<int> _getWeeks() {
       ),
     );
   }
-
   Future<DateTime?> _showMissingDaysDialog(List<DateTime> missingDays) async {
     if (missingDays.isEmpty) {
       return null;
@@ -433,15 +471,35 @@ List<int> _getWeeks() {
       },
     );
   }
-
+  List<DailyReport> _filterReports(List<DailyReport> reports) {
+    if (_searchQuery.isEmpty) return reports;
+    return reports.where((report) {
+      final age = _calculateAgeInDays(widget.cycle.startDate, report.reportDate).toString();
+      return age.contains(_searchQuery);
+    }).toList();
+  }
   @override
   Widget build(BuildContext context) {
     final hasReportForYesterday = _hasReportForYesterday();
-    final weeks = _getWeeks();
-
+    final groupedReports = groupBy(widget.reports, (DailyReport r) {
+      final days = _calculateAgeInDays(widget.cycle.startDate, r.reportDate);
+      return (days ~/ 7) + 1;
+    });
     return Scaffold(
       appBar: AppBar(
-        title: const Text('گزارش‌ها', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+        title: _isSearching
+            ? TextField(
+                controller: _searchController,
+                autofocus: true,
+                textDirection: TextDirection.rtl, // برای بهبود رفتار کرسر در RTL
+                decoration: const InputDecoration(
+                  hintText: 'جستجو بر اساس سن جوجه...',
+                  border: InputBorder.none,
+                  hintStyle: TextStyle(color: Colors.white70),
+                ),
+                style: const TextStyle(color: Colors.white),
+              )
+            : const Text('گزارش‌ها', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
         centerTitle: true,
         toolbarHeight: 48,
         backgroundColor: Colors.teal.shade700,
@@ -458,69 +516,83 @@ List<int> _getWeeks() {
         ),
         automaticallyImplyLeading: false,
         actions: [
-          DropdownButton<int?>(
-            value: _selectedWeek,
-            hint: const Text('همه هفته‌ها', style: TextStyle(color: Colors.white)),
-            icon: const Icon(Icons.filter_list, color: Colors.white),
-            dropdownColor: Colors.teal.shade700,
-            style: const TextStyle(color: Colors.white),
-            underline: const SizedBox(),
-            items: [
-              const DropdownMenuItem(value: null, child: Text('همه هفته‌ها')),
-              ...weeks.map((w) => DropdownMenuItem(value: w, child: Text('هفته $w'))),
-            ],
-            onChanged: (value) => setState(() => _selectedWeek = value),
+          IconButton(
+            icon: Icon(_isSearching ? Icons.close : Icons.search, color: Colors.white),
+            onPressed: () {
+              setState(() {
+                _isSearching = !_isSearching;
+                if (!_isSearching) {
+                  _searchController.clear();
+                }
+              });
+            },
           ),
           const SizedBox(width: 8),
         ],
+        bottom: TabBar(
+          controller: _tabController,
+          isScrollable: true,
+          labelColor: const Color.fromARGB(255, 1, 31, 87),
+          unselectedLabelColor: Colors.white70,
+          indicatorColor: const Color.fromARGB(255, 2, 22, 87),
+          tabs: [
+            const Tab(text: 'خلاصه کل'),
+            ..._weeks.map((w) => Tab(text: 'هفته $w')),
+          ],
+        ),
       ),
       body: RefreshIndicator(
         onRefresh: widget.onDataChanged,
         color: Colors.teal,
         child: FadeTransition(
           opacity: _fadeAnimation,
-          child: Builder(
-            builder: (context) {
-              final filteredReports = _selectedWeek == null
-                  ? widget.reports
-                  : groupBy(widget.reports, (DailyReport r) {
-                      final days = _calculateAgeInDays(widget.cycle.startDate, r.reportDate);
-                      return (days ~/ 7) + 1;
-                    })[_selectedWeek] ?? [];
-
-              if (filteredReports.isEmpty) {
-                return const Center(child: Text('هیچ گزارشی در این هفته یافت نشد.'));
-              }
-
-              return ListView.builder(
-                controller: _scrollController,
+          child: TabBarView(
+            controller: _tabController,
+            children: [
+              ListView(
                 padding: const EdgeInsets.all(16),
-                itemCount: (_selectedWeek != null ? 1 : 0) + filteredReports.length,
-                itemBuilder: (context, index) {
-                  if (_selectedWeek != null && index == 0) {
-                    return _buildWeeklyReportSummary(filteredReports);
-                  }
-
-                  final report = filteredReports[index - (_selectedWeek != null ? 1 : 0)];
-                  final dailyTotalFeed = report.feedConsumed.fold(0.0, (sum, f) => sum + f.quantity);
-                  final ageOnReportDay = _calculateAgeInDays(widget.cycle.startDate, report.reportDate);
-
-                  return _buildReportListItem(context, report, dailyTotalFeed, ageOnReportDay);
-                },
-              );
-            },
+                children: [
+                  _buildSummaryCard(),
+                ],
+              ),
+              ..._weeks.map((week) {
+                var reports = groupedReports[week] ?? [];
+                reports = _filterReports(reports);
+                if (reports.isEmpty) {
+                  return const Center(child: Text('هیچ گزارشی در این هفته یافت نشد.'));
+                }
+                return Scrollbar(
+                  controller: _scrollController,
+                  thumbVisibility: true,
+                  thickness: 8.0,
+                  radius: const Radius.circular(10),
+                  child: ListView.builder(
+                    controller: _scrollController,
+                    padding: const EdgeInsets.all(16),
+                    itemCount: 1 + reports.length,
+                    itemBuilder: (context, index) {
+                      if (index == 0) {
+                        return _buildWeeklyReportSummary(reports);
+                      }
+                      final report = reports[index - 1];
+                      final dailyTotalFeed = report.feedConsumed.fold(0.0, (sum, f) => sum + f.quantity);
+                      final ageOnReportDay = _calculateAgeInDays(widget.cycle.startDate, report.reportDate);
+                      return _buildReportListItem(context, report, dailyTotalFeed, ageOnReportDay);
+                    },
+                  ),
+                );
+              }),
+            ],
           ),
         ),
       ),
-      bottomNavigationBar: _buildBottomButton(hasReportForYesterday),
+      bottomNavigationBar: _isSearching ? null : _buildBottomButton(hasReportForYesterday),
     );
   }
-
   Widget _buildBottomButton(bool hasReportForYesterday) {
   bool isButtonEnabled = widget.cycle.isActive;
   String buttonText = 'دوره پایان یافته است';
   List<DateTime> missingDays = [];
-
   if (widget.cycle.isActive) {
     final cycleStart = _parseCycleStart();
     if (cycleStart == null) {
@@ -529,7 +601,6 @@ List<int> _getWeeks() {
     } else {
       final today = DateTime.now();
       final yesterday = today.subtract(const Duration(days: 1));
-
       // اگر دوره هنوز شروع نشده است
       if (today.isBefore(DateTime(cycleStart.year, cycleStart.month, cycleStart.day))) {
         isButtonEnabled = false;
@@ -550,35 +621,32 @@ List<int> _getWeeks() {
             .whereType<int>()
             .where((d) => d > 0) // فقط روزهای >=1
             .toSet();
-
         if (!hasReportForYesterday) {
-          // اما قبل از اجازه دادن بررسی کنیم که دیروز قبل از شروع دوره نباشد
-          if (yesterday.isBefore(DateTime(cycleStart.year, cycleStart.month, cycleStart.day))) {
-            isButtonEnabled = false;
-            buttonText = 'هنوز زمان ثبت گزارش نرسیده است';
-          } else {
-            buttonText = 'ثبت گزارش';
-          }
+         // اما قبل از اجازه دادن بررسی کنیم که دیروز قبل از شروع دوره نباشد
+         if (yesterday.isBefore(DateTime(cycleStart.year, cycleStart.month, cycleStart.day))) {
+           isButtonEnabled = false;
+           buttonText = 'هنوز زمان ثبت گزارش نرسیده است';
+         } else {
+           buttonText = 'ثبت گزارش';
+         }
         } else {
           // محاسبه missingDays — فقط روزهای بین شروع دوره تا دیروز را در نظر بگیر
-          final totalDays = daysPassed > 0 ? daysPassed : 0;
-          missingDays = List.generate(totalDays, (i) => i + 1)
-              .where((d) => !reportedDays.contains(d))
-              .map((d) => cycleStart.add(Duration(days: d - 1)))
-              .where((date) => date.isBefore(DateTime(today.year, today.month, today.day)))
-              .toList();
-
-          if (missingDays.isNotEmpty) {
-            buttonText = 'ثبت گزارش فراموش شده';
-          } else {
-            buttonText = 'همه گزارش‌ها ثبت شده‌اند';
-            isButtonEnabled = false;
-          }
+         final totalDays = daysPassed > 0 ? daysPassed : 0;
+         missingDays = List.generate(totalDays, (i) => i + 1)
+             .where((d) => !reportedDays.contains(d))
+             .map((d) => cycleStart.add(Duration(days: d - 1)))
+             .where((date) => date.isBefore(DateTime(today.year, today.month, today.day)))
+             .toList();
+         if (missingDays.isNotEmpty) {
+           buttonText = 'ثبت گزارش فراموش شده';
+         } else {
+           buttonText = 'همه گزارش‌ها ثبت شده‌اند';
+           isButtonEnabled = false;
+         }
         }
       }
     }
   }
-
   return Padding(
     padding: const EdgeInsets.all(16),
     child: ElevatedButton.icon(
@@ -587,7 +655,6 @@ List<int> _getWeeks() {
               try {
                 final cycleStart = _parseCycleStart();
                 if (cycleStart == null) return;
-
                 if (!hasReportForYesterday) {
                   final yesterday = DateTime.now().subtract(const Duration(days: 1));
                   // باز هم چک کنیم دیروز کمتر از شروع دوره نباشد
@@ -599,7 +666,6 @@ List<int> _getWeeks() {
                     }
                     return;
                   }
-
                   await _onEditReport(
                     context,
                     null,
@@ -611,7 +677,6 @@ List<int> _getWeeks() {
                 } else if (missingDays.isNotEmpty) {
                   final selectedDate = await _showMissingDaysDialog(missingDays);
                   if (selectedDate == null || !context.mounted) return;
-
                   // مطمئن شویم تاریخ انتخاب شده قبل از شروع دوره نیست (اضافی)
                   if (selectedDate.isBefore(DateTime(cycleStart.year, cycleStart.month, cycleStart.day))) {
                     if (context.mounted) {
@@ -621,7 +686,6 @@ List<int> _getWeeks() {
                     }
                     return;
                   }
-
                   await _onEditReport(
                     context,
                     null,
@@ -657,5 +721,4 @@ List<int> _getWeeks() {
     ),
   );
 }
-
 }

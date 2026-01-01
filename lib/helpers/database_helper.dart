@@ -834,14 +834,27 @@ Future<int> getTotalSold(int cycleId) async {
 
 
 Future<int> getRemainingFlock(int cycleId) async {
+  final db = await instance.database;
+
+  // ۱. گرفتن تعداد خرید اولیه
   final cycle = await getCycleById(cycleId);
-  if (cycle == null) return 0;
+  final int initialCount = cycle?.chickCount ?? 0;
 
-  final totalMortality = await getTotalMortality(cycleId);
-  final totalSold = await getTotalSold(cycleId);
+  // ۲. گرفتن مجموع تلفات
+  final mortalityResult = await db.rawQuery(
+    'SELECT SUM(mortality) as total FROM daily_reports WHERE cycle_id = ?',
+    [cycleId],
+  );
+  final int totalMortality = mortalityResult.first['total'] as int? ?? 0;
 
-  final remaining = cycle.chickCount - totalMortality - totalSold;
-  return remaining < 0 ? 0 : remaining;
+  // ۳. گرفتن مجموع فروش (فقط فروش مرغ)
+  final salesResult = await db.rawQuery(
+    'SELECT SUM(quantity) as total FROM incomes WHERE cycle_id = ? AND category = ?',
+    [cycleId, 'فروش مرغ'], // دقت کنید کلمه "فروش مرغ" دقیقاً همان باشد که در زمان ثبت ذخیره می‌کنید
+  );
+  final int totalSold = salesResult.first['total'] as int? ?? 0;
+
+  return initialCount - totalMortality - totalSold;
 }
 
 
@@ -878,5 +891,7 @@ Future<List<DailyReport>> getReportsForCycle(int cycleId) async {
   );
   return maps.map((map) => DailyReport.fromMap(map)).toList();
 }
+
+
 
 }

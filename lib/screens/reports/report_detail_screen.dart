@@ -1,7 +1,5 @@
 // lib/screens/report_detail_screen.dart
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
-import 'package:shamsi_date/shamsi_date.dart'; // برای فرمت تاریخ جلالی
 import '../../models/daily_report.dart';
 
 class ReportDetailScreen extends StatelessWidget {
@@ -11,110 +9,116 @@ class ReportDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final formatter = NumberFormat.decimalPattern('en_us');
-    final theme = Theme.of(context);
+  
 
     return Scaffold(
       appBar: AppBar(
         title: Text(
           "جزئیات گزارش روز ${report.formattedReportDate}",
-          style: const TextStyle(fontWeight: FontWeight.bold),
+          style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
         ),
         centerTitle: true,
-        backgroundColor: Colors.teal.shade700,
+        backgroundColor: Colors.transparent,
         elevation: 0,
         flexibleSpace: Container(
           decoration: BoxDecoration(
             gradient: LinearGradient(
-              colors: [Colors.teal.shade700, Colors.teal.shade400],
+              colors: [Color.fromARGB(255, 8, 128, 114)],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
           ),
         ),
+        iconTheme: const IconThemeData(color: Colors.white),
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16.0),
-        children: [
-          FadeTransition(
-            opacity: const AlwaysStoppedAnimation(1.0), // انیمیشن برای نمایش
-            child: _buildDetailCard(
-              context: context,
-              title: '📊 آمار کلی',
-              children: [
-                _buildInfoRow(Icons.calendar_today, 'تاریخ:', report.formattedReportDate),
-                _buildInfoRow(Icons.airline_seat_flat_angled, 'تلفات:', '${report.mortality} قطعه', Colors.redAccent),
-              ],
-            ),
+      extendBodyBehindAppBar: true,
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Color.fromARGB(255, 8, 128, 114), Colors.white],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
           ),
-          const SizedBox(height: 16),
-          FadeTransition(
-            opacity: const AlwaysStoppedAnimation(1.0),
-            child: _buildDetailCard(
-              context: context,
-              title: '🍽️ دان مصرفی',
-              children: report.feedConsumed.isEmpty
-                  ? [
-                      const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 8.0),
-                        child: Text('موردی ثبت نشده است.', style: TextStyle(color: Colors.grey)),
+        ),
+        child: SafeArea(
+          child: ListView(
+            padding: const EdgeInsets.all(16.0),
+            children: [
+              _buildDetailCard(
+                context: context,
+                title: ' آمار کلی',
+                icon: Icons.assessment,
+                children: [
+                  _buildInfoRow(Icons.calendar_today, 'تاریخ:', report.formattedReportDate, const Color.fromARGB(255, 56, 142, 128)),
+                  _buildInfoRow(Icons.warning_amber_rounded, 'تلفات:', '${report.mortality} قطعه', Colors.redAccent),
+                ],
+              ),
+              const SizedBox(height: 16),
+              _buildDetailCard(
+                context: context,
+                title: ' دان مصرفی',
+                icon: Icons.grain,
+                children: report.feedConsumed.isEmpty
+                    ? [
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 8.0),
+                          child: Center(
+                            child: Text('موردی ثبت نشده است.', style: TextStyle(color: Colors.grey, fontSize: 16)),
+                          ),
+                        ),
+                      ]
+                    : report.feedConsumed.map((feed) {
+                        return _buildInfoRow(
+                          Icons.grass,
+                          '${feed.feedType}:',
+                          '${feed.bagCount} کیسه (${feed.quantity.toStringAsFixed(1)} کیلوگرم)',
+                          Colors.green.shade700,
+                        );
+                      }).toList(),
+              ),
+              const SizedBox(height: 16),
+              _buildDetailCard(
+                context: context,
+                title: ' دارو و واکسن',
+                icon: Icons.medical_services,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8.0),
+                    child: Text(
+                      report.medicine != null && report.medicine!.isNotEmpty
+                          ? report.medicine!
+                          : 'موردی ثبت نشده است.',
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: report.medicine != null && report.medicine!.isNotEmpty ? Colors.black87 : Colors.grey,
                       ),
-                    ]
-                  : report.feedConsumed.map((feed) {
-                      return _buildInfoRow(
-                        Icons.grain,
-                        '${feed.feedType}:',
-                        '${feed.bagCount} کیسه (${feed.quantity.toStringAsFixed(1)} کیلوگرم)',
-                        Colors.green,
-                      );
-                    }).toList(),
-            ),
-          ),
-          const SizedBox(height: 16),
-          FadeTransition(
-            opacity: const AlwaysStoppedAnimation(1.0),
-            child: _buildDetailCard(
-              context: context,
-              title: '💊 دارو و واکسن',
-              children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8.0),
-                  child: Text(
-                    report.medicine != null && report.medicine!.isNotEmpty
-                        ? report.medicine!
-                        : 'موردی ثبت نشده است.',
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: report.medicine != null && report.medicine!.isNotEmpty ? Colors.black87 : Colors.grey,
                     ),
                   ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          FadeTransition(
-            opacity: const AlwaysStoppedAnimation(1.0),
-            child: _buildDetailCard(
-              context: context,
-              title: '📝 ملاحظات',
-              children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8.0),
-                  child: Text(
-                    report.notes != null && report.notes!.isNotEmpty
-                        ? report.notes!
-                        : 'موردی ثبت نشده است.',
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: report.notes != null && report.notes!.isNotEmpty ? Colors.black87 : Colors.grey,
+                ],
+              ),
+              const SizedBox(height: 16),
+              _buildDetailCard(
+                context: context,
+                title: ' ملاحظات',
+                icon: Icons.notes,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8.0),
+                    child: Text(
+                      report.notes != null && report.notes!.isNotEmpty
+                          ? report.notes!
+                          : 'موردی ثبت نشده است.',
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: report.notes != null && report.notes!.isNotEmpty ? Colors.black87 : Colors.grey,
+                      ),
                     ),
                   ),
-                ),
-              ],
-            ),
+                ],
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -122,16 +126,16 @@ class ReportDetailScreen extends StatelessWidget {
   Widget _buildDetailCard({
     required BuildContext context,
     required String title,
+    required IconData icon,
     required List<Widget> children,
   }) {
     return Card(
       color: Colors.white,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(20),
-        side: BorderSide(color: Colors.teal.shade100, width: 1),
       ),
       elevation: 6,
-      shadowColor: Colors.teal.withOpacity(0.2),
+      shadowColor: Colors.green.withOpacity(0.3),
       child: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
@@ -139,22 +143,33 @@ class ReportDetailScreen extends StatelessWidget {
           children: [
             Row(
               children: [
-                Text(
-                  title,
-                  style: Theme.of(context).textTheme.titleLarge!.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.teal.shade800,
-                      ),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.green.shade100,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    icon,
+                    color: Colors.green.shade700,
+                    size: 24,
+                  ),
                 ),
-                const SizedBox(width: 8),
-                Icon(
-                  _getIconForTitle(title),
-                  color: Colors.teal.shade600,
-                  size: 20,
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: Theme.of(context).textTheme.titleLarge!.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.green.shade800,
+                        ),
+                  ),
                 ),
               ],
             ),
-            const Divider(height: 24, thickness: 1.5, color: Colors.teal),
+            const SizedBox(height: 12),
+            Divider(color: Colors.green.shade200, thickness: 1.5),
+            const SizedBox(height: 12),
             ...children,
           ],
         ),
@@ -164,35 +179,27 @@ class ReportDetailScreen extends StatelessWidget {
 
   Widget _buildInfoRow(IconData icon, String label, String value, [Color? iconColor]) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6.0),
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
       child: Row(
         children: [
-          Icon(icon, color: iconColor ?? Colors.teal, size: 22),
-          const SizedBox(width: 12),
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: (iconColor ?? Colors.green.shade700).withOpacity(0.1),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, color: iconColor ?? Colors.green.shade700, size: 24),
+          ),
+          const SizedBox(width: 16),
           Expanded(
-            child: Text(label, style: const TextStyle(fontSize: 16, color: Colors.black87)),
+            child: Text(label, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.black87)),
           ),
           Text(
             value,
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.teal),
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.green.shade700),
           ),
         ],
       ),
     );
-  }
-
-  IconData _getIconForTitle(String title) {
-    switch (title) {
-      case '📊 آمار کلی':
-        return Icons.bar_chart;
-      case '🍽️ دان مصرفی':
-        return Icons.local_dining;
-      case '💊 دارو و واکسن':
-        return Icons.local_hospital;
-      case '📝 ملاحظات':
-        return Icons.note;
-      default:
-        return Icons.info;
-    }
   }
 }

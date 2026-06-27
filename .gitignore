@@ -1,0 +1,99 @@
+# ════════════════════════════════════════════
+#   Flutter / Dart
+# ════════════════════════════════════════════
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+build/
+pubspec.lock
+
+# ════════════════════════════════════════════
+#   Android Build Artifacts (مهم‌ترین بخش)
+# ════════════════════════════════════════════
+android/app/build/
+android/app/intermediates/
+android/app/.cxx/
+android/build/
+android/.gradle/
+android/captures/
+android/gradle-wrapper.jar
+android/local.properties
+android/**/*.ap_
+android/**/*.class
+
+# فایل‌های بزرگ native که خطا داد
+android/app/build/intermediates/
+android/app/build/outputs/
+**/merged_native_libs/
+**/*.so
+**/*.dex
+
+# ════════════════════════════════════════════
+#   iOS Build Artifacts
+# ════════════════════════════════════════════
+ios/Flutter/App.framework
+ios/Flutter/Flutter.framework
+ios/Flutter/Flutter.podspec
+ios/Flutter/Generated.xcconfig
+ios/Flutter/ephemeral/
+ios/Flutter/app.flx
+ios/Flutter/app.zip
+ios/Flutter/flutter_assets/
+ios/Flutter/flutter_export_environment.sh
+ios/ServiceDefinitions.json
+ios/Runner/GeneratedPluginRegistrant.*
+ios/Pods/
+ios/.symlinks/
+ios/build/
+
+# ════════════════════════════════════════════
+#   IDE و ویرایشگرها
+# ════════════════════════════════════════════
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+.DS_Store
+Thumbs.db
+
+# ════════════════════════════════════════════
+#   فایل‌های محیطی و کلیدها (مهم برای امنیت)
+# ════════════════════════════════════════════
+*.keystore
+*.jks
+key.properties
+google-services.json
+GoogleService-Info.plist
+.env
+.env.*
+secrets.properties
+
+# ════════════════════════════════════════════
+#   فایل‌های لاگ و موقت
+# ════════════════════════════════════════════
+*.log
+*.tmp
+*.temp
+crash.log
+auto-sync.log
+
+# ════════════════════════════════════════════
+#   Coverage و تست
+# ════════════════════════════════════════════
+coverage/
+.coverage
+
+# ════════════════════════════════════════════
+#   Web
+# ════════════════════════════════════════════
+web/
+
+# ════════════════════════════════════════════
+#   macOS
+# ════════════════════════════════════════════
+macos/Flutter/GeneratedPluginRegistrant.swift
+macos/Flutter/ephemeral/

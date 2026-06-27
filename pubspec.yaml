@@ -1,0 +1,54 @@
+name: poultry
+description: "Poultry farm management app: allows users to register and track breeding cycles, manage chick counts, record start and end dates of each cycle, and oversee overall farm operations in a simple and user-friendly interface."
+
+publish_to: 'none'
+
+version: 1.0.0+2
+environment:
+  sdk: ^3.9.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  collection: ^1.19.0
+  # persian_datetime_picker: ^3.1.1
+  shamsi_date: ^1.1.0
+  mask_text_input_formatter: ^2.3.0
+  path: ^1.9.1
+  sqflite: ^2.3.3+1
+  path_provider: ^2.1.5
+  cupertino_icons: ^1.0.6
+  intl: ^0.20.2
+  permission_handler: ^12.0.1
+  file_picker: ^10.3.3
+  file_saver: ^0.2.14 # به‌روزرسانی به آخرین نسخه سازگار
+  shared_preferences: ^2.1.0
+  package_info_plus : ^9.0.0
+  sqflite_common_ffi: ^2.3.7+1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_launcher_icons: ^0.14.4
+  flutter_native_splash: ^2.2.16
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/icons/    # برای آیکون برنامه
+
+flutter_icons:
+  android: true
+  ios: true
+  image_path: "assets/icons/logo-2.png" # مسیر آیکون جدید و با فرمت png
+  adaptive_icon_background: "#ffffff"  # رنگ پس‌زمینه (سفید یا هر رنگ دلخواه)
+  remove_alpha_ios: true
+
+
+flutter_native_splash:
+  color: "#ffffff"   # پس‌زمینه سفید
+  android: true
+  ios: true
